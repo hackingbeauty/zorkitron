@@ -1,88 +1,93 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.29;
+pragma solidity 0.8.26;
 
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
-import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
-import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {BalanceDeltaLibrary, BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
+import "forge-std/console.sol";
 
-contract ZorkitronHook is BaseHook, ERC1155 {
-    // Constructor
-    constructor() {}
+contract ZorkitronHook is BaseHook {
+	// Use CurrencyLibrary and BalanceDeltaLibrary
+	// to add some helper functions over the Currency and BalanceDelta
+	// data types 
+	using CurrencyLibrary for Currency;
+    using BalanceDeltaLibrary for BalanceDelta;
 
-    // BaseHook Functions
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: false,
-            afterInitialize: true,
-            beforeAddLiquidity: false,
-            afterAddLiquidity: true,
-            beforeRemoveLiquidity: false,
-            afterRemoveLiquidity: false,
-            beforeSwap: false,
-            afterSwap: false,
-            beforeDonate: false,
-            afterDone: false,
-            beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
-            afterAddLiquidityReturnDelta: false,
-            afterRemoveLiquidityReturnDelta: false
-        }); 
+    address zorkitronGenerator;
+    mapping(address => PositionInfo info) public collateralDeposited;
+
+	// Initialize BaseHook and ERC20
+    constructor(
+        IPoolManager _manager,
+        address _zorkitronGenerator
+    ) BaseHook(_manager) {
+        zorkitronGenerator = _zorkitronGenerator;
     }
 
-    function afterAddLiquidity(
-        address sender,
+	// Set up hook permissions to return `true`
+	// for the two hook functions we are using
+    function getHookPermissions()
+        public
+        pure
+        override
+        returns (Hooks.Permissions memory)
+    {
+        return
+            Hooks.Permissions({
+                beforeInitialize: false,
+                afterInitialize: false,
+                beforeAddLiquidity: false,
+                beforeRemoveLiquidity: false,
+                afterAddLiquidity: true,
+                afterRemoveLiquidity: false,
+                beforeSwap: false,
+                afterSwap: false,
+                beforeDonate: false,
+                afterDonate: false,
+                beforeSwapReturnDelta: false,
+                afterSwapReturnDelta: false,
+                afterAddLiquidityReturnDelta: false,
+                afterRemoveLiquidityReturnDelta: false
+            });
+    }
+
+	// Stub implementation for `afterAddLiquidity`
+	function _afterAddLiquidity(
+        address,
         PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        BalanceDelta,
-        bytes calldata
-    ) external override onlyPoolManager returns (bytes4, int128) {
-        // If this is not an ETH-TOKEN pool with this hook attached, ignore
-        if (!key.currency0.isAddressZero()) return (this.afterAddLiquidity.selector, delta);
+        IPoolManager.ModifyLiquidityParams calldata,
+        BalanceDelta delta,
+		BalanceDelta,
+        bytes calldata hookData
+    ) internal override onlyPoolManager returns (bytes4, BalanceDelta) {
+        address owner = abi.decode(hookData, (address));
+        console.log("--------- OWNER of deposited liquidity is: ---------");
+        console.log(owner);
 
-        uint daiTokens = lockCollateral(liquidityTokens);
-        uint ethTokens = swapDAIForETH(daiTokens);
-        uint stakedEth = stakeETH(ethTokens);
-        uint reStakedETH = restakeETH(stakedETH);
+        // First, check that the pool in question is a pool with ETH as one of the tokens.
+        // If currency0 is address(0), then we know its Native ETH.
+        // Native ETH will always be currency0/address(0).
+        if(!key.currency0.isAddressZero()) return (this.afterAddLiquidity.selector, delta);
 
-        return (this.afterAddLiquidity.selector, 0);
+        // (address owner) = abi.decode(hookData,(address));
+        // address lpNFT = PositionManager(owner).getLpNFT();
+
+        address lpNFT = address(0);
+        IZorkitronGenerator(zorkitronGenerator).depositCollateral(lpNFT);
+
+        return (this.afterAddLiquidity.selector, delta);
     }
 
-    function lockCollateral(liquidityTokens) internal returns(uint daiTokens) {
-        // Developer Docs: https://docs.makerdao.com/
-        // https://github.com/makerdao
-        // https://github.com/makerdao/developerguides
-        // Collateral module: https://docs.makerdao.com/smart-contract-modules/collateral-module
-
-        // uint daiTokens = IMakerDAO(makerDAOAddr).depositCollateral(liquidity);
-        // so...after a deposit of liquidity...how does the Smart Contract code get access to the 
-        // Liquidity Tokens that have been credited to the Liquidity
-
-        uint daiTokens = IMakerDAO(makerDAOAddr).depositCollateral(liquidityTokens);
-    } 
-
-    function swapDAIForETH() internal returns () {
-        // IUniswapV3Router03(routerAddr).swap(daiTokens);
+    // Helper function to generate hookData in the format we care about
+    function getHookData(
+        address owner
+    ) public pure returns (bytes memory) {
+        return abi.encode(owner);
     }
-
-    function stakeETH() internal returns () {
-        // Beacon deposit contract: https://etherscan.io/address/0x00000000219ab540356cBB839Cbe05303d7705Fa#code
-    }
-
-    function restakeETH() internal returns() {
-        // Eigen Layer Smart Contract call
-    }
-
-    function withdrawLiquidity() external returns() {
-        // withdraw all the DeFi passive income
-    }
-
 }
