@@ -7,6 +7,7 @@ import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
@@ -20,14 +21,17 @@ contract ZorkitronHook is BaseHook {
     using BalanceDeltaLibrary for BalanceDelta;
 
     address zorkitronGenerator;
+    IPositionManager posm;
     mapping(address => PositionInfo info) public collateralDeposited;
 
 	// Initialize BaseHook and ERC20
     constructor(
         IPoolManager _manager,
-        address _zorkitronGenerator
+        address _zorkitronGenerator,
+        IPositionManager _posm
     ) BaseHook(_manager) {
         zorkitronGenerator = _zorkitronGenerator;
+        posm = _posm;
     }
 
 	// Set up hook permissions to return `true`
@@ -75,11 +79,17 @@ contract ZorkitronHook is BaseHook {
         // Native ETH will always be currency0/address(0).
         if(!key.currency0.isAddressZero()) return (this.afterAddLiquidity.selector, delta);
 
-        // (address owner) = abi.decode(hookData,(address));
-        // address lpNFT = PositionManager(owner).getLpNFT();
+        uint256 tokenId = posm.nextTokenId();
+        
+        console.log("--------- POSM Next Position Id is: ---------");
+        console.log(tokenId);
+        console.log("--------- POSM PositionInfo: ---------");
 
+        // This function is crucial for applications that need to manage or analyze individual 
+        // liquidity positions:
+        // posm.getPositionInfo() 
         address lpNFT = address(0);
-        IZorkitronGenerator(zorkitronGenerator).depositCollateral(lpNFT);
+        IZorkitronGenerator(zorkitronGenerator).depositCollateral(lpNFT, posm);
 
         return (this.afterAddLiquidity.selector, delta);
     }

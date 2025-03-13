@@ -29,6 +29,8 @@ import {PositionInfo, PositionInfoLibrary} from "./libraries/PositionInfoLibrary
 import {LiquidityAmounts} from "./libraries/LiquidityAmounts.sol";
 import {NativeWrapper} from "./base/NativeWrapper.sol";
 import {IWETH9} from "./interfaces/external/IWETH9.sol";
+import "forge-std/console.sol";
+
 
 //                                           444444444
 //                                444444444444      444444
@@ -138,6 +140,7 @@ contract PositionManager is
         NativeWrapper(_weth9)
     {
         tokenDescriptor = _tokenDescriptor;
+        console.log('--- inside constructor for PositionManager ---');
     }
 
     /// @notice Reverts if the deadline has passed
@@ -357,10 +360,14 @@ contract PositionManager is
         // mint receipt token
         uint256 tokenId;
         // tokenId is assigned to current nextTokenId before incrementing it
+        console.log('--------- INSIDE _MINT --------');
         unchecked {
             tokenId = nextTokenId++;
         }
         _mint(owner, tokenId);
+
+        console.log('------ INSIDE POSITIONMANAGER _mint(), and owner is: ------');
+        console.log(owner);
 
         // Initialize the position info
         PositionInfo info = PositionInfoLibrary.initialize(poolKey, tickLower, tickUpper);

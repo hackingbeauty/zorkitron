@@ -3,6 +3,10 @@ pragma solidity=0.8.26;
 
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
+import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
+
 // import {IPoolInitializer_v4} from "v4-core/src/interfaces/IPoolInitializer_v4.sol";
 // import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 
@@ -19,7 +23,14 @@ import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
 // 8 - Withdraw all the original deposit plus the passive income profits & rewards!
 
 contract ZorkitronGenerator is IZorkitronGenerator {
-    function depositCollateral(address lpNFT) external pure returns(bool success) {
+    function depositCollateral(address lpNFT, IPositionManager posm) external returns(bool success) {
+
+        // IPositionManager posm = IPositionManager(posmAddr);
+        
+        // (PoolKey memory key, PositionInfo positionInfo) = posm.getPoolAndPositionInfo(1);
+        uint256 positionLiquidity = posm.nextTokenId();
+
+
 
         // return success;
         return true;
