@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity >=0.8.0;
+import "forge-std/console.sol";
 
 /// @notice Modern, minimalist, and gas efficient ERC-721 implementation.
 /// @author Solmate (https://github.com/transmissions11/solmate/blob/main/src/tokens/ERC721.sol)
@@ -75,7 +76,7 @@ abstract contract ERC721 {
 
     function setApprovalForAll(address operator, bool approved) public virtual {
         isApprovedForAll[msg.sender][operator] = approved;
-
+        console.log('uyuuuuuu')
         emit ApprovalForAll(msg.sender, operator, approved);
     }
 

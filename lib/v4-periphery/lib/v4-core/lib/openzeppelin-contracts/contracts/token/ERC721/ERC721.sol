@@ -10,6 +10,7 @@ import {Context} from "../../utils/Context.sol";
 import {Strings} from "../../utils/Strings.sol";
 import {IERC165, ERC165} from "../../utils/introspection/ERC165.sol";
 import {IERC721Errors} from "../../interfaces/draft-IERC6093.sol";
+import "forge-std/console.sol";
 
 /**
  * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC721] Non-Fungible Token Standard, including
@@ -432,6 +433,7 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * Emits an {ApprovalForAll} event.
      */
     function _setApprovalForAll(address owner, address operator, bool approved) internal virtual {
+        console.log("----- booo ------");
         if (operator == address(0)) {
             revert ERC721InvalidOperator(operator);
         }

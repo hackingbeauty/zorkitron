@@ -21,6 +21,8 @@ contract MockBaseActionsRouter is BaseActionsRouter, ReentrancyLock {
     constructor(IPoolManager _poolManager) BaseActionsRouter(_poolManager) {}
 
     function executeActions(bytes calldata params) external isNotLocked {
+                console.log('------ INSIDE _executeActions xxx ------');
+
         _executeActions(params);
     }
 

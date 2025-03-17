@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+import "forge-std/console.sol";
 
 import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
@@ -44,9 +45,23 @@ library SlippageCheck {
         int256 amount0 = delta.amount0();
         int256 amount1 = delta.amount1();
         if (amount0 < 0 && amount0Max < uint128(uint256(-amount0))) {
+            console.log('======== inside MaximumAmountExceeded 1 ========');
+            console.log('------ amount0 ------');
+            console.log(amount0);
+            console.log('------ amount0Max ------');
+            console.log(amount0Max);
+            console.log('------ uint128(uint256(-amount0)) ------');
+            console.log(uint128(uint256(-amount0)));
             revert MaximumAmountExceeded(amount0Max, uint128(uint256(-amount0)));
         }
         if (amount1 < 0 && amount1Max < uint128(uint256(-amount1))) {
+            console.log('======== inside MaximumAmountExceeded 2 ========');
+            console.log('------ amount1 ------');
+            console.log(amount1);
+            console.log('------ amount1Max ------');
+            console.log(amount1Max);
+            console.log('------ uint128(uint256(-amount1)) ------');
+            console.log(uint128(uint256(-amount1)));
             revert MaximumAmountExceeded(amount1Max, uint128(uint256(-amount1)));
         }
     }

@@ -10,6 +10,7 @@ import "../../utils/Address.sol";
 import "../../utils/Context.sol";
 import "../../utils/Strings.sol";
 import "../../utils/introspection/ERC165.sol";
+import "forge-std/console.sol";
 
 /**
  * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC721] Non-Fungible Token Standard, including
@@ -369,7 +370,14 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
         address operator,
         bool approved
     ) internal virtual {
+        console.log('----- inside ERC721 -----');
+
         require(owner != operator, "ERC721: approve to caller");
+        console.log('----- inside ERC721, and owner is -----');
+        console.log(owner);
+        console.log('----- inside ERC721, and operator is -----');
+        console.log(operator);
+
         _operatorApprovals[owner][operator] = approved;
         emit ApprovalForAll(owner, operator, approved);
     }

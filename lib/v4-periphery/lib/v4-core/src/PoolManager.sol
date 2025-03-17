@@ -25,6 +25,7 @@ import {CurrencyReserves} from "./libraries/CurrencyReserves.sol";
 import {Extsload} from "./Extsload.sol";
 import {Exttload} from "./Exttload.sol";
 import {CustomRevert} from "./libraries/CustomRevert.sol";
+import "forge-std/console.sol";
 
 //  4
 //   44
@@ -102,12 +103,15 @@ contract PoolManager is IPoolManager, ProtocolFees, NoDelegateCall, ERC6909Claim
 
     /// @inheritdoc IPoolManager
     function unlock(bytes calldata data) external override returns (bytes memory result) {
+        console.log('----- inside POOLMANAGER unlock 0 -----');
         if (Lock.isUnlocked()) AlreadyUnlocked.selector.revertWith();
 
         Lock.unlock();
+        console.log('----- inside POOLMANAGER unlock 1 -----');
 
         // the caller does everything in this callback, including paying what they owe via calls to settle
         result = IUnlockCallback(msg.sender).unlockCallback(data);
+        console.log('----- inside POOLMANAGER unlock 2 -----');
 
         if (NonzeroDeltaCount.read() != 0) CurrencyNotSettled.selector.revertWith();
         Lock.lock();
@@ -347,7 +351,7 @@ contract PoolManager is IPoolManager, ProtocolFees, NoDelegateCall, ERC6909Claim
     // if settling native, integrators should still call `sync` first to avoid DoS attack vectors
     function _settle(address recipient) internal returns (uint256 paid) {
         Currency currency = CurrencyReserves.getSyncedCurrency();
-
+        console.log('----- INSIDE _SETTLE -----');
         // if not previously synced, or the syncedCurrency slot has been reset, expects native currency to be settled
         if (currency.isAddressZero()) {
             paid = msg.value;
@@ -366,12 +370,14 @@ contract PoolManager is IPoolManager, ProtocolFees, NoDelegateCall, ERC6909Claim
     /// @notice Adds a balance delta in a currency for a target address
     function _accountDelta(Currency currency, int128 delta, address target) internal {
         if (delta == 0) return;
-
+        console.log('------ INSIDE _ACCOUNTDELTA -----');
         (int256 previous, int256 next) = currency.applyDelta(target, delta);
 
         if (next == 0) {
+            console.log('------ INSIDE _ACCOUNTDELTA 1 -----');
             NonzeroDeltaCount.decrement();
         } else if (previous == 0) {
+            console.log('------ INSIDE _ACCOUNTDELTA 2 -----');
             NonzeroDeltaCount.increment();
         }
     }

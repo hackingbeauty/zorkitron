@@ -2,12 +2,14 @@
 pragma solidity ^0.8.24;
 
 import {Locker} from "../libraries/Locker.sol";
+import "forge-std/console.sol";
 
 /// @notice A transient reentrancy lock, that stores the caller's address as the lock
 contract ReentrancyLock {
     error ContractLocked();
 
     modifier isNotLocked() {
+        console.log('----- INSIDE ISNOTLOCKED MODIFER -----');
         if (Locker.get() != address(0)) revert ContractLocked();
         Locker.set(msg.sender);
         _;

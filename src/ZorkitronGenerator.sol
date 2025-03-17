@@ -6,40 +6,45 @@ import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {IERC721} from "forge-std/interfaces/IERC721.sol";
+import "forge-std/console.sol";
 
 // import {IPoolInitializer_v4} from "v4-core/src/interfaces/IPoolInitializer_v4.sol";
 // import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 
 // 8 STEPS! GOOD LUCK!
 // 1 - Set up the Front-end - DONE
-// 2 - Get the LP NFT transferred to the ZorkitronGenerator Smart Contract
 // STOP
 // START
+// 2 - Get the LP NFT transferred to the ZorkitronGenerator Smart Contract
 // 3 - Convert the LP NFT into an ERC20 token type that can be used as collateral for a loan
 // 4 - Deposit the collateral token into MakerDAO/SKY to generate a laon for token you can sell for ETH
 // 5 - Use the loaned token and buy ETH with it
 // 6 - Take the ETH and stake it into a Proof of Stake Validator
 // 7 - Take the staked ETH and re-stake it into EigenLayer
 // 8 - Withdraw all the original deposit plus the passive income profits & rewards!
+// (PoolKey memory key, PositionInfo positionInfo) = posm.getPoolAndPositionInfo(1);
 
 contract ZorkitronGenerator is IZorkitronGenerator {
-    function depositCollateral(address lpNFT, IPositionManager posm) external returns(bool success) {
+    function depositCollateral(address owner, IPositionManager posm) external returns(bool success) {
 
-        // IPositionManager posm = IPositionManager(posmAddr);
+        uint256 tokenId = posm.nextTokenId();
         
-        // (PoolKey memory key, PositionInfo positionInfo) = posm.getPoolAndPositionInfo(1);
-        uint256 positionLiquidity = posm.nextTokenId();
+        console.log("--------- POSM Next Position Id is: ---------");
+        console.log(tokenId);
+        console.log("--------- POSM PositionInfo: ---------");
+        console.log('----- owner iz-----');
+        console.log(owner);
+        
+        // IERC721(address(posm)).setApprovalForAll(zorkitronGeneratorAddr, true);
+        // IERC721(address(posm)).transferFrom(owner, zorkitronGeneratorAddr, tokenId);
 
-
-
-        // return success;
         return true;
     }
 
     //Mint position first : https://docs.uniswap.org/contracts/v4/quickstart/manage-liquidity/mint-position
     //Docs: https://docs.uniswap.org/contracts/v4/quickstart/create-pool
 
-    // IPositionManager posm;
 
     // constructor(address _positionManager) {
     //     posm =  IPositionManager(_positionManager);

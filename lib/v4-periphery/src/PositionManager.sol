@@ -11,7 +11,6 @@ import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-
 import {IPositionDescriptor} from "./interfaces/IPositionDescriptor.sol";
 import {ERC721Permit_v4} from "./base/ERC721Permit_v4.sol";
 import {ReentrancyLock} from "./base/ReentrancyLock.sol";
@@ -146,6 +145,7 @@ contract PositionManager is
     /// @notice Reverts if the deadline has passed
     /// @param deadline The timestamp at which the call is no longer valid, passed in by the caller
     modifier checkDeadline(uint256 deadline) {
+        console.log('---- INSIDE CHECKDEADLINE ----');
         if (block.timestamp > deadline) revert DeadlinePassed(deadline);
         _;
     }
@@ -177,6 +177,7 @@ contract PositionManager is
         isNotLocked
         checkDeadline(deadline)
     {
+        console.log('------- INSIDE MODIFYLIQUIDITIES -------');
         _executeActions(unlockData);
     }
 
@@ -195,6 +196,8 @@ contract PositionManager is
     }
 
     function _handleAction(uint256 action, bytes calldata params) internal virtual override {
+        console.log('------- INSIDE HANDLEACTION -------');
+
         if (action < Actions.SETTLE) {
             if (action == Actions.INCREASE_LIQUIDITY) {
                 (uint256 tokenId, uint256 liquidity, uint128 amount0Max, uint128 amount1Max, bytes calldata hookData) =
@@ -245,6 +248,7 @@ contract PositionManager is
             }
         } else {
             if (action == Actions.SETTLE_PAIR) {
+                console.log('---- INSIDE SETTLE_PAIR ----');
                 (Currency currency0, Currency currency1) = params.decodeCurrencyPair();
                 _settlePair(currency0, currency1);
                 return;

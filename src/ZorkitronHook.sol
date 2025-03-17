@@ -79,17 +79,10 @@ contract ZorkitronHook is BaseHook {
         // Native ETH will always be currency0/address(0).
         if(!key.currency0.isAddressZero()) return (this.afterAddLiquidity.selector, delta);
 
-        uint256 tokenId = posm.nextTokenId();
-        
-        console.log("--------- POSM Next Position Id is: ---------");
-        console.log(tokenId);
-        console.log("--------- POSM PositionInfo: ---------");
-
         // This function is crucial for applications that need to manage or analyze individual 
-        // liquidity positions:
-        // posm.getPositionInfo() 
-        address lpNFT = address(0);
-        IZorkitronGenerator(zorkitronGenerator).depositCollateral(lpNFT, posm);
+        // liquidity positions: posm.getPositionInfo() 
+
+        IZorkitronGenerator(zorkitronGenerator).depositCollateral(owner, posm);
 
         return (this.afterAddLiquidity.selector, delta);
     }
