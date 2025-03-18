@@ -3,6 +3,10 @@ src = "src"
 out = "out"
 libs = ["lib"]
 
+# It's to solve vm.getCode is failed due to "No matching artifact found" error.
+# https://github.com/foundry-rs/foundry/issues/7569#issuecomment-2040694197
+unchecked_cheatcode_artifacts = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 
 solc_version = "0.8.26"

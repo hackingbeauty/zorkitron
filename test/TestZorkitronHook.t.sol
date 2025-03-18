@@ -2,27 +2,19 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "forge-std/Test.sol";
-import {Deployers} from "@uniswap/v4-core/test/utils/Deployers.sol";
 import {PosmTestSetup} from "v4-periphery/test/shared/PosmTestSetup.sol";
-import {Deploy, IPositionDescriptor} from "v4-periphery/test/shared/Deploy.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {Actions} from "v4-periphery/src/libraries/Actions.sol";
-import {PoolManager} from "v4-core/PoolManager.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {IHooks} from "v4-periphery/lib/v4-core/src/interfaces/IHooks.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {SqrtPriceMath} from "v4-core/libraries/SqrtPriceMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
-import {IERC721} from "forge-std/interfaces/IERC721.sol";
-import {Deploy, IPositionDescriptor} from "v4-periphery/test/shared/Deploy.sol";
 import "forge-std/console.sol";
 
-contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
+contract TestZorkitronHook is Test, PosmTestSetup {
 	using CurrencyLibrary for Currency;
 
 	// Native ETH tokens are represented by address(0)
@@ -31,9 +23,6 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 	// Our token to use in the below ETH-TOKEN pool
 	MockERC20 token;
 	Currency tokenCurrency; 	// Currency for the MockER20 token
-
-	// PositionManager NFT
-	IPositionManager posm;
 
 	// Hook Contract
 	ZorkitronHook hookContract;
@@ -53,14 +42,7 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 		deployFreshManagerAndRouters();
 
 		// STEP 2 - Deploy an instance of the NFT PositionManager
-		posm = Deploy.positionManager(
-            address(manager),
-			address(permit2),
-			100_000,
-			address(proxyAsImplementation),
-			address(_WETH9),
-			hex"03"
-        );
+		deployPosm(manager);
 
 		// STEP 3 - Deploy any random coin
 		token = new MockERC20("Random Coin", "RCOIN", 18);		

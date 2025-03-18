@@ -4,21 +4,16 @@ pragma solidity=0.8.26;
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import {SafeCallback} from "v4-periphery/src/base/SafeCallback.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Actions} from "v4-periphery/src/libraries/Actions.sol";
-import {TickMath} from "v4-core/libraries/TickMath.sol";
-import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import "forge-std/console.sol";
 
 contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
 	IPositionManager posm;
-    PoolKey poolKey;
     ZorkitronHook hookContract;
     using CurrencyLibrary for Currency;
    
@@ -39,7 +34,7 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         uint24 liquidityProviderFee
     ) external view returns(bool success) {
 
-        PoolKey memory pool = PoolKey({
+        PoolKey memory poolKey = PoolKey({
             currency0: Currency.wrap(currency0),
             currency1: Currency.wrap(currency1),
             fee: liquidityProviderFee,
@@ -50,12 +45,11 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         return true;
     }
 
-    function depositCollateral(address owner) external returns(bool success) {
+    function depositCollateral(address owner) external view returns(bool success) {
         uint256 tokenId = posm.nextTokenId();
         
         console.log("--------- POSM Next Position Id is: ---------");
         console.log(tokenId);
-        console.log("--------- POSM PositionInfo: ---------");
         console.log('----- owner iz-----');
         console.log(owner);
         
