@@ -12,46 +12,45 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Actions} from "v4-periphery/src/libraries/Actions.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {ZorkitronHook} from "../src/ZorkitronHook.sol";
+import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import "forge-std/console.sol";
 
 contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
-    address owner;
-
-    // PositionManager NFT
 	IPositionManager posm;
-
     PoolKey poolKey;
-
-    uint256 liquidityProviderFee;
+    ZorkitronHook hookContract;
+    using CurrencyLibrary for Currency;
    
     constructor(
         IPoolManager _manager,
-        address _zorkitronRouter,
+        ZorkitronHook _hookContract,
         IPositionManager _posm
     ) SafeCallback(_manager)  {
         console.log('-----INSIDE THE ZORKITRON_ROUTER CONSTRUCTOR -----');
+        hookContract = _hookContract;
         posm = _posm;
     }
 
     function addLiquidity(
         address currency0,
-        address currency1
-    ) external returns(bool success) {
+        address currency1,
+        int24 tickSpacing,
+        uint24 liquidityProviderFee
+    ) external view returns(bool success) {
 
         PoolKey memory pool = PoolKey({
-            currency0: currency0,
-            currency1: currency1,
+            currency0: Currency.wrap(currency0),
+            currency1: Currency.wrap(currency1),
             fee: liquidityProviderFee,
             tickSpacing: tickSpacing,
             hooks: hookContract
         });
-
-
         
         return true;
     }
 
-    function depositCollateral(IPositionManager posm) external returns(bool success) {
+    function depositCollateral(address owner) external returns(bool success) {
         uint256 tokenId = posm.nextTokenId();
         
         console.log("--------- POSM Next Position Id is: ---------");

@@ -83,7 +83,7 @@ contract ZorkitronHook is BaseHook {
         // This function is crucial for applications that need to manage or analyze individual 
         // liquidity positions: posm.getPositionInfo() 
 
-        IZorkitronRouter(zorkitronRouter).depositCollateral(owner, posm);
+        IZorkitronRouter(zorkitronRouter).depositCollateral(owner);
 
         return (this.afterAddLiquidity.selector, delta);
     }
