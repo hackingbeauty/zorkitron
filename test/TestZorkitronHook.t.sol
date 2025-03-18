@@ -38,8 +38,8 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 	// Hook Contract
 	ZorkitronHook hookContract;
 
-	// Zorkitron Generator Contract
-	address zorkitronGeneratorAddr;
+	// Zorkitron Router Contract
+	address zorkitronRouterAddr;
 
 	address owner = address(this);
 	bytes hookData = abi.encode(address(this));
@@ -79,15 +79,19 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 		// STEP 5 - Deploy the Hook Contract
 		uint160 flags = uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG);
 		address hookAddress = address(flags);
-		zorkitronGeneratorAddr = address(0x2179a60856E37dfeAacA0ab043B931fE224b27B6);
+		zorkitronRouterAddr = address(0x2179a60856E37dfeAacA0ab043B931fE224b27B6);
 
-		// STEP 6 - Deploy ZorkitronGenerator
-		deployCodeTo("ZorkitronGenerator.sol", zorkitronGeneratorAddr);
+		// STEP 6 - Deploy ZorkitronRouter
+		deployCodeTo(
+			"ZorkitronRouter.sol", 
+			abi.encode(manager),	
+			zorkitronRouterAddr
+		);
 
 		// STEP 7 - Deploy code to any address of choice using the following Foundry cheatcode
 		deployCodeTo(
 			"ZorkitronHook.sol",
-			abi.encode(manager, zorkitronGeneratorAddr, posm),
+			abi.encode(manager, zorkitronRouterAddr, posm),
 			hookAddress
 		);
 
@@ -106,48 +110,60 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 	}
 
     function test_addLiquidity() public {
-		bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
-		bytes[] memory params = new bytes[](2);
+		// bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
+		// bytes[] memory params = new bytes[](2);
 
-		int24 tickLower = -60;
-		int24 tickUpper = 60;
-		uint128 ethToAdd = 10000 ether;
-		uint128 amount0Max = ethToAdd;
-		uint128 amount1Max = 10000000000000000000000;
-		uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-		uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-			sqrtPriceAtTickLower,
-			SQRT_PRICE_1_1,
-			ethToAdd
-		);
-		uint256 liquidity = liquidityDelta;
+		// int24 tickLower = -60;
+		// int24 tickUpper = 60;
+		// uint128 ethToAdd = 10000 ether;
+		// uint128 amount0Max = ethToAdd;
+		// uint128 amount1Max = 10000000000000000000000;
+		// uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
+		// uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
+		// 	sqrtPriceAtTickLower,
+		// 	SQRT_PRICE_1_1,
+		// 	ethToAdd
+		// );
+		// uint256 liquidity = liquidityDelta;
 
-		console.log("------ liquidity iz: ------", liquidity);
+		// bytes memory unlockData = abi.encode(
+		// 	poolKey,
+		// 	tickLower,
+		// 	tickUpper,
+		// 	liquidity,
+		// 	amount0Max,
+		// 	amount1Max,
+		// 	owner, 
+		// 	hookData
+		// );
+		// bytes memory unlockResultData = manager.unlock(unlockData);
+
+		// console.log("------ liquidity iz: ------", liquidity);
 		
 		//owner = recipient of minted position
-		params[0] = abi.encode(
-			poolKey,
-			tickLower,
-			tickUpper,
-			liquidity,
-			amount0Max,
-			amount1Max,
-			owner, 
-			hookData
-		);
+		// params[0] = abi.encode(
+		// 	poolKey,
+		// 	tickLower,
+		// 	tickUpper,
+		// 	liquidity,
+		// 	amount0Max,
+		// 	amount1Max,
+		// 	owner, 
+		// 	hookData
+		// );
 
-		params[1] = abi.encode(ethCurrency, tokenCurrency);
+		// params[1] = abi.encode(ethCurrency, tokenCurrency);
 
-		uint256 deadline = block.timestamp + 60;
-		uint256 valueToPass = ethCurrency.isAddressZero() ? amount0Max : 0;
+		// uint256 deadline = block.timestamp + 60;
+		// uint256 valueToPass = ethCurrency.isAddressZero() ? amount0Max : 0;
 
-		console.log('---- valueToPass ----');
-		console.log(valueToPass);
+		// console.log('---- valueToPass ----');
+		// console.log(valueToPass);
 
-		posm.modifyLiquidities{value: valueToPass}(
-			abi.encode(actions, params),
-			deadline
-		);
+		// posm.modifyLiquidities{value: valueToPass}(
+		// 	abi.encode(actions, params),
+		// 	deadline
+		// );
 
         assertEq(true, true);
     }

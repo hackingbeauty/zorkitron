@@ -10,7 +10,8 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
-import {IZorkitronGenerator} from "./interfaces/IZorkitronGenerator.sol";
+import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
+import {SafeCallback} from "v4-periphery/src/base/SafeCallback.sol";
 import "forge-std/console.sol";
 
 contract ZorkitronHook is BaseHook {
@@ -20,17 +21,17 @@ contract ZorkitronHook is BaseHook {
 	using CurrencyLibrary for Currency;
     using BalanceDeltaLibrary for BalanceDelta;
 
-    address zorkitronGenerator;
+    address zorkitronRouter;
     IPositionManager posm;
     mapping(address => PositionInfo info) public collateralDeposited;
 
 	// Initialize BaseHook and ERC20
     constructor(
         IPoolManager _manager,
-        address _zorkitronGenerator,
+        address _zorkitronRouter,
         IPositionManager _posm
-    ) BaseHook(_manager) {
-        zorkitronGenerator = _zorkitronGenerator;
+    ) BaseHook(_manager)  {
+        zorkitronRouter = _zorkitronRouter;
         posm = _posm;
     }
 
@@ -82,7 +83,7 @@ contract ZorkitronHook is BaseHook {
         // This function is crucial for applications that need to manage or analyze individual 
         // liquidity positions: posm.getPositionInfo() 
 
-        IZorkitronGenerator(zorkitronGenerator).depositCollateral(owner, posm);
+        IZorkitronRouter(zorkitronRouter).depositCollateral(owner, posm);
 
         return (this.afterAddLiquidity.selector, delta);
     }

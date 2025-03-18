@@ -27,7 +27,6 @@ library NonzeroDeltaCount {
     /// @notice Potential to underflow. Ensure checks are performed by integrating contracts to ensure this does not happen.
     /// Current usage ensures this will not happen because we call decrement with known boundaries (only up to the number of times we call increment).
     function decrement() internal {
-        console.log('----- INSIDE NONZERODELTA DECREMENT() ------');
         assembly ("memory-safe") {
             let count := tload(NONZERO_DELTA_COUNT_SLOT)
             count := sub(count, 1)
