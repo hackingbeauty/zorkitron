@@ -21,7 +21,7 @@ import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import {IERC721} from "forge-std/interfaces/IERC721.sol";
 import "forge-std/console.sol";
 
-contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
+contract TestZorkitronHook is Test, PosmTestSetup {
     using CurrencyLibrary for Currency;
 
     // Native ETH tokens are represented by address(0)
@@ -30,9 +30,6 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
     // Our token to use in the below ETH-TOKEN pool
     MockERC20 token;
     Currency tokenCurrency; // Currency for the MockER20 token
-
-    // PositionManager NFT
-    IPositionManager posm;
 
     // Hook Contract
     ZorkitronHook hookContract;
@@ -53,15 +50,6 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
 
         // STEP 2 - Deploy an instance of the NFT PositionManager
         deployPosm(manager);
-        posm = lpm;
-        // posm = Deploy.positionManager(
-        //     address(manager),
-        //     address(permit2),
-        //     100_000,
-        //     address(proxyAsImplementation),
-        //     address(_WETH9),
-        //     hex"03"
-        // );
 
         // STEP 3 - Deploy any random coin
         token = new MockERC20("Random Coin", "RCOIN", 18);
@@ -76,6 +64,11 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
         token.approve(address(this), type(uint256).max);
         token.approve(address(1), type(uint256).max);
 
+        // STEP 9.1 - Approve currency for spending on PosM
+        // This happens via approval to Permit2 first, and then Permit2 -> PosM
+        // Helper function coming from PosmTestSetup.sol
+        approvePosmCurrency(tokenCurrency);
+
         // STEP 5 - Deploy the Hook Contract
         uint160 flags = uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG);
         address hookAddress = address(flags);
@@ -89,7 +82,7 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
         // STEP 7 - Deploy code to any address of choice using the following Foundry cheatcode
         deployCodeTo(
             "ZorkitronHook.sol",
-            abi.encode(manager, zorkitronGeneratorAddr, posm),
+            abi.encode(manager, zorkitronGeneratorAddr, lpm),
             hookAddress
         );
 
@@ -155,7 +148,7 @@ contract TestZorkitronHook is Test, Deployers, PosmTestSetup {
         console.log("---- valueToPass ----");
         console.log(valueToPass);
 
-        posm.modifyLiquidities{value: valueToPass}(
+        lpm.modifyLiquidities{value: valueToPass}(
             abi.encode(actions, params),
             deadline
         );
