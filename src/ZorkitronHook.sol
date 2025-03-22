@@ -80,9 +80,6 @@ contract ZorkitronHook is BaseHook {
         // Native ETH will always be currency0/address(0).
         if(!key.currency0.isAddressZero()) return (this.afterAddLiquidity.selector, delta);
 
-        // This function is crucial for applications that need to manage or analyze individual 
-        // liquidity positions: posm.getPositionInfo() 
-
         IZorkitronRouter(zorkitronRouter).depositCollateral(owner);
 
         return (this.afterAddLiquidity.selector, delta);

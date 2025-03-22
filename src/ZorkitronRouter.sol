@@ -178,6 +178,8 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         console.log(owner);
         // IERC721(address(posm)).setApprovalForAll(zorkitronGeneratorAddr, true);
         // IERC721(address(posm)).transferFrom(owner, zorkitronGeneratorAddr, tokenId);
+        // This function is crucial for applications that need to manage or analyze individual 
+        // liquidity positions: posm.getPositionInfo() 
         return true;
     }
 
