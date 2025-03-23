@@ -10,6 +10,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IPoolInitializer_v4} from "v4-periphery/src/interfaces/IPoolInitializer_v4.sol";
 import {IERC20} from "lib/forge-std/src/interfaces/IERC20.sol";
 import {IAllowanceTransfer} from "v4-periphery/lib/permit2/src/interfaces/IAllowanceTransfer.sol";
+import {IHooks} from "v4-periphery/lib/v4-core/src/interfaces/IHooks.sol";
 import {Actions} from "v4-periphery/src/libraries/Actions.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
@@ -17,40 +18,23 @@ import {ZorkitronLibrary} from "./libraries/ZorkitronLibrary.sol";
 import { UD60x18, intoUint256, floor, sqrt, ud60x18} from "@prb/math/src/UD60x18.sol";
 import "forge-std/console.sol";
 
-contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
-    IPoolManager manager;
+contract ZorkitronRouter is IZorkitronRouter {
+    IPoolManager poolManager;
 	IPositionManager posm;
     ZorkitronHook hookContract;
     PoolKey pool;
     using CurrencyLibrary for Currency;
    
     constructor(
-        IPoolManager _manager,
-        ZorkitronHook _hookContract,
-        IPositionManager _posm,
-        bool _currency0isETH,
-        address _currency0,
-        address _currency1,
-        int24 _tickSpacing,
-        uint24 _liquidityProviderFee,
-        uint128 amount0Max,
-        uint128 amount1Max,
-        uint256 ethToSend
-    ) SafeCallback(_manager)  {
-        manager = _manager;
-        hookContract = _hookContract;
-        posm = _posm;
+        address _poolManager,
+        address _posm
+    ) {
+        poolManager = IPoolManager(_poolManager);
+        posm = IPositionManager(_posm);
+    }
 
-        initializePool(
-            _currency0isETH,
-            _currency0,
-            _currency1,
-            _tickSpacing,
-            _liquidityProviderFee,
-            amount0Max,
-            amount1Max,
-            ethToSend
-        );
+    function setHookContract(ZorkitronHook _hookContract) external {
+        hookContract = _hookContract;
     }
 
     function initializePool(
@@ -62,7 +46,7 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         uint128 amount0Max,
         uint128 amount1Max,
         uint256 ethToSend
-    ) internal returns(bool success) {
+    ) external returns(bool success) {
         // Step 1 - Sort currencies
         (address currency0, address currency1) = ZorkitronLibrary.sortTokens(_currency0, _currency1);
 
@@ -86,7 +70,7 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         uint160 startingPrice = calculateStartingPrice(amount0Max, amount1Max);
 
         // Step 6 - Call initialize - Pools are initiated with a starting price
-        IPoolManager(manager).initialize(pool, startingPrice);
+        poolManager.initialize(pool, startingPrice);
 
         // Step 7 - Encode the initializePool parameters provided to multicall
         bytes[] memory params = new bytes[](1);
@@ -169,6 +153,11 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
 
         return true;
     }
+    
+    //TO DO
+    function removeLiquidity(address owner) external pure returns (bool success) {
+        return true;
+    }
 
     function depositCollateral(address owner) external view returns(bool success) {
         uint256 tokenId = posm.nextTokenId();
@@ -182,10 +171,6 @@ contract ZorkitronRouter is IZorkitronRouter, SafeCallback {
         // liquidity positions: posm.getPositionInfo() 
         return true;
     }
-
-    function _unlockCallback(bytes calldata data) internal override returns (bytes memory) {
-		
-	}
 
     function calculateStartingPrice(
         uint128 amount0Max,

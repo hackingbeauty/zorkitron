@@ -8,7 +8,6 @@ library ZorkitronLibrary {
     ) {
         require(currencyA != currencyB, 'ZorkitronLibrary: IDENTICAL_ADDRESSES');
         (currency0, currency1) = currencyA < currencyB ? (currencyA, currencyB) : (currencyB, currencyA);
-        require(currency0 != address(0), 'ZorkitronLibrary: ZERO_ADDRESS');
     }
 
 }
