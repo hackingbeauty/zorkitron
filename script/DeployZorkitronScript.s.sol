@@ -53,7 +53,7 @@ contract DeployZorkitronScript is Script {
 
         // Initialize a new Liquidity Pool
         zorkitronRouter.initializePool(
-            true, // _currency0isETH
+            false, // _currency0isETH
             Constants.ETH_TOKEN_ADDRESS, // address _currency0 - ETH
             Constants.DAI_TOKEN_ADDRESS, // address _currency1 - DAI
             Constants.TICK_SPACING, // 

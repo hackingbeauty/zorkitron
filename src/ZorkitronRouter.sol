@@ -80,13 +80,7 @@ contract ZorkitronRouter is IZorkitronRouter {
             startingPrice
         );    
 
-        // Step 8 - Execute the multicall
-        if(_currency0isETH) {
-            IPositionManager(posm).multicall{value: ethToSend}(params); 
-        } else {
-            IPositionManager(posm).multicall(params); 
-        }
-        
+        IPositionManager(posm).multicall(params);         
         return success;
     }
 
@@ -145,12 +139,7 @@ contract ZorkitronRouter is IZorkitronRouter {
         IAllowanceTransfer(address(this)).approve(currency1, address(posm), type(uint160).max, type(uint48).max);
 
         // Step 8 - Execute the multicall
-        if(_currency0isETH) {
-            IPositionManager(posm).multicall{value: ethToSend}(params); 
-        } else {
-            IPositionManager(posm).multicall(params); 
-        }
-
+        IPositionManager(posm).multicall(params); 
         return true;
     }
     
