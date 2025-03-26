@@ -66,7 +66,7 @@ contract ZorkitronRouter is IZorkitronRouter {
             hooks: hookContract
         });
 
-        // Step 5 - Calculate startingPrice
+        // // Step 5 - Calculate startingPrice
         uint160 startingPrice = calculateStartingPrice(amount0Max, amount1Max);
 
         // Step 6 - Call initialize - Pools are initiated with a starting price
