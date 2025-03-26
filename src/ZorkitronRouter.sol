@@ -38,7 +38,6 @@ contract ZorkitronRouter is IZorkitronRouter {
     }
 
     function initializePool(
-        bool _currency0isETH,
         address _currency0,
         address _currency1,
         int24 _tickSpacing,
@@ -55,7 +54,7 @@ contract ZorkitronRouter is IZorkitronRouter {
         Currency currencyB = Currency.wrap(currency1);
 
         // Step 3 - If Native ETH is part of the token pair, use ADDRESS_ZERO
-        if(_currency0isETH) { currencyA = CurrencyLibrary.ADDRESS_ZERO; }
+        // if(_currency0isETH) { currencyA = CurrencyLibrary.ADDRESS_ZERO; }
 
         // Step 4 - Configure the pool
         pool = PoolKey({
@@ -66,7 +65,7 @@ contract ZorkitronRouter is IZorkitronRouter {
             hooks: hookContract
         });
 
-        // // Step 5 - Calculate startingPrice
+        // Step 5 - Calculate startingPrice
         uint160 startingPrice = calculateStartingPrice(amount0Max, amount1Max);
 
         // Step 6 - Call initialize - Pools are initiated with a starting price
@@ -79,7 +78,8 @@ contract ZorkitronRouter is IZorkitronRouter {
             pool,
             startingPrice
         );    
-
+        
+        // Step 8 - Make a multicall
         IPositionManager(posm).multicall(params);         
         return success;
     }

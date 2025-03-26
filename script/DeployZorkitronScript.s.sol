@@ -7,6 +7,7 @@ import {HookMiner} from "v4-periphery/src/utils/HookMiner.sol";
 import {Constants} from "./base/Constants.sol";
 import {ZorkitronRouter} from "../src/ZorkitronRouter.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
+import {MockERC20} from "src/MockERC20.sol";
 import "forge-std/Script.sol";
 
 /// @notice Mines the address and deploys the PointsHook.sol Hook contract
@@ -16,6 +17,8 @@ contract DeployZorkitronScript is Script {
     function setUp() public {
         // Get the deployer's private key from the environment
         uint256 privateKey = vm.envUint("METAMASK_PRIVATE_KEY");
+
+        MockERC20 daiToken = new MockERC20("DAI", "DAI", 18, 1_000_000 ether);
 
         // Start a broadcast to deploy to the Sepolia testnet
         vm.startBroadcast(privateKey);
@@ -53,7 +56,6 @@ contract DeployZorkitronScript is Script {
 
         // Initialize a new Liquidity Pool
         zorkitronRouter.initializePool(
-            false, // _currency0isETH
             Constants.ETH_TOKEN_ADDRESS, // address _currency0 - ETH
             Constants.DAI_TOKEN_ADDRESS, // address _currency1 - DAI
             Constants.TICK_SPACING, // 
