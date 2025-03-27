@@ -11,8 +11,6 @@ import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
-import {SafeCallback} from "v4-periphery/src/base/SafeCallback.sol";
-import "forge-std/console.sol";
 
 contract ZorkitronHook is BaseHook {
     address zorkitronRouterAddr;
@@ -63,9 +61,6 @@ contract ZorkitronHook is BaseHook {
         bytes calldata hookData
     ) internal override onlyPoolManager returns (bytes4, BalanceDelta) {
         address owner = abi.decode(hookData, (address));
-        console.log("--------- OWNER of deposited liquidity is: ---------");
-        console.log(owner);
-
         // First, check that the pool in question is a pool with ETH as one of the tokens.
         // If currency0 is address(0), then we know its Native ETH.
         // Native ETH will always be currency0/address(0).
@@ -86,8 +81,6 @@ contract ZorkitronHook is BaseHook {
         bytes calldata hookData
     ) internal override onlyPoolManager returns (bytes4, BalanceDelta) {
         address owner = abi.decode(hookData, (address));
-        console.log("--------- OWNER of removed liquidity is: ---------");
-        console.log(owner);
 
         IZorkitronRouter(zorkitronRouterAddr).removeLiquidity(owner);
 

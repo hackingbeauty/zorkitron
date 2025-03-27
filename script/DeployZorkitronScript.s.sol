@@ -18,8 +18,6 @@ contract DeployZorkitronScript is Script {
         // Get the deployer's private key from the environment
         uint256 privateKey = vm.envUint("METAMASK_PRIVATE_KEY");
 
-        MockERC20 daiToken = new MockERC20("DAI", "DAI", 18, 1_000_000 ether);
-
         // Start a broadcast to deploy to the Sepolia testnet
         vm.startBroadcast(privateKey);
 
@@ -52,16 +50,19 @@ contract DeployZorkitronScript is Script {
         require(address(zorkitronHook) == hookAddress, "ZorkitronHookScript: hook address mismatch");
 
         // Set the Hook contract in the Router
-        zorkitronRouter.setHookContract(zorkitronHook);
+        zorkitronRouter.setHookContract(address(zorkitronHook));
+
+        // Mint DAI tokens for testing
+        MockERC20 daiToken = new MockERC20("DAI", "DAI", 18, 1_000_000 ether);
 
         // Initialize a new Liquidity Pool
         zorkitronRouter.initializePool(
-            Constants.ETH_TOKEN_ADDRESS, // address _currency0 - ETH
-            Constants.DAI_TOKEN_ADDRESS, // address _currency1 - DAI
-            Constants.TICK_SPACING, // 
-            Constants.LIQUIDITY_PROVIDER_FEE,
-            Constants.AMOUNT_O_MAX,
-            Constants.AMOUNT_1_MAX,
+            address(0),             // address _currency0 - ETH
+            address(daiToken),      // address _currency1 - DAI
+            10,                     // TICK_SPACING
+            500,                    // LIQUIDITY_PROVIDER_FEE
+            1,                      // AMOUNT_O_MAX
+            1000,                   //  AMOUNT_1_MAX,
             Constants.ETH_TO_SEND
         );
 

@@ -6,7 +6,6 @@ import {ZorkitronHook} from "../ZorkitronHook.sol";
 
 interface IZorkitronRouter {
     function addLiquidity(
-        bool _currency0isETH,
         address _currency0,
         address _currency1,
         int24 tickLower,
@@ -14,14 +13,12 @@ interface IZorkitronRouter {
         uint256 liquidity,
         uint128 amount0Max,
         uint128 amount1Max,
-        uint256 ethToSend,
-        bytes calldata hookData
+        uint256 ethToSend
     ) external returns (bool success);
     function depositCollateral(address owner) external returns (bool success);
     function removeLiquidity(address owner) external returns (bool success);
-    function setHookContract(ZorkitronHook _hookContract) external;
+    function setHookContract(address _hookContractAddr) external;
     function initializePool(
-        bool _currency0isETH,
         address _currency0,
         address _currency1,
         int24 _tickSpacing,

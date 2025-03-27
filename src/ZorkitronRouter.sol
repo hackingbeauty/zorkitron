@@ -16,12 +16,13 @@ import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {ZorkitronLibrary} from "./libraries/ZorkitronLibrary.sol";
 import { UD60x18, intoUint256, floor, sqrt, ud60x18} from "@prb/math/src/UD60x18.sol";
+import {Math} from './libraries/Math.sol';
 import "forge-std/console.sol";
 
 contract ZorkitronRouter is IZorkitronRouter {
     IPoolManager poolManager;
 	IPositionManager posm;
-    ZorkitronHook hookContract;
+    address hookContractAddr;
     PoolKey pool;
     using CurrencyLibrary for Currency;
    
@@ -33,8 +34,8 @@ contract ZorkitronRouter is IZorkitronRouter {
         posm = IPositionManager(_posm);
     }
 
-    function setHookContract(ZorkitronHook _hookContract) external {
-        hookContract = _hookContract;
+    function setHookContract(address _hookContractAddr) external {
+        hookContractAddr = _hookContractAddr;
     }
 
     function initializePool(
@@ -50,7 +51,7 @@ contract ZorkitronRouter is IZorkitronRouter {
         (address currency0, address currency1) = ZorkitronLibrary.sortTokens(_currency0, _currency1);
 
         // Step 2 - Wrap currencies
-        Currency currencyA = Currency.wrap(currency0);
+        Currency currencyA = Currency.wrap(currency0); // address(0) = ETH;
         Currency currencyB = Currency.wrap(currency1);
 
         // Step 3 - If Native ETH is part of the token pair, use ADDRESS_ZERO
@@ -62,7 +63,7 @@ contract ZorkitronRouter is IZorkitronRouter {
             currency1: currencyB,
             fee: _liquidityProviderFee,
             tickSpacing: _tickSpacing,
-            hooks: hookContract
+            hooks: IHooks(hookContractAddr)
         });
 
         // Step 5 - Calculate startingPrice
@@ -85,7 +86,6 @@ contract ZorkitronRouter is IZorkitronRouter {
     }
 
     function addLiquidity(
-        bool _currency0isETH,
         address _currency0,
         address _currency1,
         int24 tickLower,
@@ -93,8 +93,7 @@ contract ZorkitronRouter is IZorkitronRouter {
         uint256 liquidity,
         uint128 amount0Max,
         uint128 amount1Max,
-        uint256 ethToSend,
-        bytes calldata hookData
+        uint256 ethToSend
     ) external returns(bool success) {
         // Step 1 - Sort currencies
         (address currency0, address currency1) = ZorkitronLibrary.sortTokens(_currency0, _currency1);
@@ -114,8 +113,7 @@ contract ZorkitronRouter is IZorkitronRouter {
             liquidity,
             amount0Max,
             amount1Max,
-            address(this), // ZorkitronRouter is recipient of LP NFT position    
-            hookData
+            address(this) // ZorkitronRouter is recipient of LP NFT position    
         );
 
         // Step 4 - Encode the SETTLE_PAIR parameters
@@ -139,7 +137,7 @@ contract ZorkitronRouter is IZorkitronRouter {
         IAllowanceTransfer(address(this)).approve(currency1, address(posm), type(uint160).max, type(uint48).max);
 
         // Step 8 - Execute the multicall
-        IPositionManager(posm).multicall(params); 
+        IPositionManager(posm).multicall{value: ethToSend}(params); 
         return true;
     }
     
@@ -161,16 +159,28 @@ contract ZorkitronRouter is IZorkitronRouter {
         return true;
     }
 
-    function calculateStartingPrice(
-        uint128 amount0Max,
-        uint128 amount1Max
-    ) internal pure returns(uint160 startingPrice) {
-        UD60x18 amt0Max = ud60x18(amount0Max);
-        UD60x18 amt1Max = ud60x18(amount1Max);
-        UD60x18 val1 = ud60x18(2);
-        UD60x18 val2 = ud60x18(96);
+    // function calculateStartingPrice(
+    //     uint128 amount0Max,
+    //     uint128 amount1Max
+    // ) internal pure returns(uint160 startingPrice) {
+    //     UD60x18 amt0Max = ud60x18(amount0Max);
+    //     UD60x18 amt1Max = ud60x18(amount1Max);
+    //     UD60x18 val1 = ud60x18(2);
+    //     UD60x18 val2 = ud60x18(96);
 
-        startingPrice = uint160(intoUint256(floor(sqrt(amt0Max.div(amt1Max))).mul(val1.pow(val2))));
+    //     startingPrice = uint160(intoUint256(floor(sqrt(amt0Max.div(amt1Max))).mul(val1.pow(val2))));
+    // }
+    
+    function calculateStartingPrice(
+        uint256 amount0Max,
+        uint256 amount1Max
+    ) internal pure returns(uint160 sqrtPriceX96) {
+        require(amount0Max > 0, "PriceMath: DIVISION BY ZERO");
+        // Multiply amount0Max by 2^192 (left shift by 192) to preserve precision after the square root.
+        uint256 ratioX192 = (amount1Max << 192) / amount0Max;
+        uint256 sqrtRatio = Math.sqrt(ratioX192);
+        require(sqrtRatio <= type(uint160).max, "PriceMath: sqrt overflow");
+        sqrtPriceX96 = uint160(sqrtRatio);
     }
 
 }
