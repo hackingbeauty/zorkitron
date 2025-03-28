@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
+import {PosmTestSetup} from "v4-periphery/test/shared/PosmTestSetup.sol";
 import {HookMiner} from "v4-periphery/src/utils/HookMiner.sol";
 import {Constants} from "./base/Constants.sol";
 import {ZorkitronRouter} from "../src/ZorkitronRouter.sol";
@@ -11,10 +12,11 @@ import {MockERC20} from "src/MockERC20.sol";
 import "forge-std/Script.sol";
 
 /// @notice Mines the address and deploys the PointsHook.sol Hook contract
-contract DeployZorkitronScript is Script {
-    PoolManager manager = PoolManager(Constants.POOL_MANAGER);
+contract DeployZorkitronToAnvilScript is Script, PosmTestSetup {
 
     function setUp() public {
+        deployPosm(manager);
+
         // Get the deployer's private key from the environment
         uint256 privateKey = vm.envUint("METAMASK_PRIVATE_KEY");
 
@@ -23,12 +25,12 @@ contract DeployZorkitronScript is Script {
 
         // Deploy the Router using CREATE2
         bytes32 routerSalt = keccak256(abi.encodePacked(
-            Constants.POOL_MANAGER,
-            Constants.POSITION_MANAGER
+            manager,
+            posm
         ));
         ZorkitronRouter zorkitronRouter = new ZorkitronRouter{salt: routerSalt}(
-            Constants.POOL_MANAGER,
-            Constants.POSITION_MANAGER
+            manager,
+            posm
         );
 
         // Set up the Hook flags you wish to enable
@@ -39,12 +41,12 @@ contract DeployZorkitronScript is Script {
             Constants.CREATE2_DEPLOYER,
             flags,
             type(ZorkitronHook).creationCode,
-            abi.encode(Constants.POOL_MANAGER, zorkitronRouter)
+            abi.encode(manager, zorkitronRouter)
         );
 
         // Deploy the Hook using CREATE2
         ZorkitronHook zorkitronHook = new ZorkitronHook{salt: salt}(
-           PoolManager(Constants.POOL_MANAGER),
+           PoolManager(manager),
            address(zorkitronRouter)
         );
         require(address(zorkitronHook) == hookAddress, "DeployZorkitronScript: hook address mismatch");

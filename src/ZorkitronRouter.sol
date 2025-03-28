@@ -15,6 +15,8 @@ import {Actions} from "v4-periphery/src/libraries/Actions.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {ZorkitronLibrary} from "./libraries/ZorkitronLibrary.sol";
+import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {IZuni} from "./interfaces/IZuni.sol";
 import { UD60x18, intoUint256, floor, sqrt, ud60x18} from "@prb/math/src/UD60x18.sol";
 import {Math} from './libraries/Math.sol';
 import "forge-std/console.sol";
@@ -22,16 +24,21 @@ import "forge-std/console.sol";
 contract ZorkitronRouter is IZorkitronRouter {
     IPoolManager poolManager;
 	IPositionManager posm;
-    address hookContractAddr;
     PoolKey pool;
+    address public immutable hookContractAddr;
+    address public immutable poolManagerAddr;
+    address public immutable zuniAddr;
     using CurrencyLibrary for Currency;
    
     constructor(
         address _poolManager,
-        address _posm
+        address _posm,
+        address _zuniAddr
     ) {
         poolManager = IPoolManager(_poolManager);
         posm = IPositionManager(_posm);
+        poolManagerAddr = _poolManager;
+        zuniAddr = _zuniAddr;
     }
 
     function setHookContract(address _hookContractAddr) external {
@@ -70,9 +77,9 @@ contract ZorkitronRouter is IZorkitronRouter {
         uint160 startingPrice = calculateStartingPrice(amount0Max, amount1Max);
 
         // Step 6 - Call initialize - Pools are initiated with a starting price
-        poolManager.initialize(pool, startingPrice);
+        IPoolManager(poolManagerAddr).initialize(pool, startingPrice);
 
-        // Step 7 - Encode the initializePool parameters provided to multicall
+        // // Step 7 - Encode the initializePool parameters provided to multicall
         bytes[] memory params = new bytes[](1);
         params[0] = abi.encodeWithSelector(
             IPoolInitializer_v4.initializePool.selector,
@@ -148,12 +155,17 @@ contract ZorkitronRouter is IZorkitronRouter {
 
     function depositCollateral(address owner) external view returns(bool success) {
         uint256 tokenId = posm.nextTokenId();
+        (, PositionInfo positionInfo ) = posm.getPoolAndPositionInfo(tokenId);
         console.log("--------- POSM Next Position Id is: ---------");
         console.log(tokenId);
         console.log('----- owner iz-----');
         console.log(owner);
-        // IERC721(address(posm)).setApprovalForAll(zorkitronGeneratorAddr, true);
-        // IERC721(address(posm)).transferFrom(owner, zorkitronGeneratorAddr, tokenId);
+
+        uint256 erc20Tokens = IZuni(zuniAddr).deposit(positionInfo);
+        // Pass the ERC20 tokens into MakerDAO or AAVE to get a loan for more ETH
+        // Deposit the ETH into a Proof of Stake Validator or Lido pool
+
+
         // This function is crucial for applications that need to manage or analyze individual 
         // liquidity positions: posm.getPositionInfo() 
         return true;

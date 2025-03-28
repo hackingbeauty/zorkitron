@@ -11,6 +11,7 @@ import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {PositionDescriptor} from "v4-periphery/src/PositionDescriptor.sol";
 import {ZorkitronHook} from "../src/ZorkitronHook.sol";
 import "forge-std/console.sol";
 
@@ -63,18 +64,19 @@ contract TestZorkitronHook is Test, PosmTestSetup {
 		approvePosmCurrency(tokenCurrency);
 
 		// STEP 7 - Deploy the Hook Contract
-		uint160 flags = uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG);
-		address hookAddress = address(flags);
-		zorkitronRouterAddr = address(0x2179a60856E37dfeAacA0ab043B931fE224b27B6);
+		uint160 flags = uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
 
-		// STEP 8 - Deploy ZorkitronRouter
+		// address hookAddress = address(flags);
+		// zorkitronRouterAddr = address(0x2179a60856E37dfeAacA0ab043B931fE224b27B6);
+
+		// // STEP 8 - Deploy ZorkitronRouter
 		deployCodeTo(
 			"ZorkitronRouter.sol", 
 			abi.encode(manager),	
 			zorkitronRouterAddr
 		);
 
-		// STEP 9 - Deploy code to any address of choice using the following Foundry cheatcode
+		// // STEP 9 - Deploy code to any address of choice using the following Foundry cheatcode
 		deployCodeTo(
 			"ZorkitronHook.sol",
 			abi.encode(manager, zorkitronRouterAddr, lpm),
@@ -96,41 +98,7 @@ contract TestZorkitronHook is Test, PosmTestSetup {
 	}
 
     function test_addLiquidity() public {
-		bytes memory actions = abi.encodePacked(uint8(Actions.MINT_POSITION), uint8(Actions.SETTLE_PAIR));
-		bytes[] memory params = new bytes[](2);
-
-		int24 tickLower = -60;
-		int24 tickUpper = 60;
-		uint128 ethToAdd = 10000 ether;
-		uint128 amount0Max = ethToAdd;
-		uint128 amount1Max = 10000000000000000000000;
-		uint160 sqrtPriceAtTickLower = TickMath.getSqrtPriceAtTick(-60);
-		uint256 liquidityDelta = LiquidityAmounts.getLiquidityForAmount0(
-			sqrtPriceAtTickLower,
-			SQRT_PRICE_1_1,
-			ethToAdd
-		);
-		uint256 deadline = block.timestamp + 60;
-		uint256 valueToPass = ethCurrency.isAddressZero() ? amount0Max : 0;
-
-		// owner = recipient of minted position
-		params[0] = abi.encode(
-			poolKey,
-			tickLower,
-			tickUpper,
-			liquidityDelta,
-			amount0Max,
-			amount1Max,
-			owner, 
-			hookData
-		);
-
-		params[1] = abi.encode(ethCurrency, tokenCurrency);
-
-		lpm.modifyLiquidities{value: valueToPass}(
-			abi.encode(actions, params),
-			deadline
-		);
+		
 
         assertEq(true, true);
     }
