@@ -1,33 +1,33 @@
 // SPDX-License-Identifier: MIT
-  pragma solidity ^0.8.26;
+pragma solidity ^0.8.26;
 
-  import {Test} from "forge-std/Test.sol";
-  import {BaseTest} from "./utils/BaseTest.sol";
-  import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-  import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-  import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-  import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-  import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-  import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-  import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-  import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-  import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-  import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
-  import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
-  import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
-  import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
-  import {ZorkitronHook} from "../src/ZorkitronHook.sol";
-  import "forge-std/console.sol";
+import {Test} from "forge-std/Test.sol";
+import {BaseTest} from "./utils/BaseTest.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {LiquidityAmounts} from "@uniswap/v4-core/test/utils/LiquidityAmounts.sol";
+import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
+import {Constants} from "@uniswap/v4-core/test/utils/Constants.sol";
+import {EasyPosm} from "./utils/libraries/EasyPosm.sol";
+import {ZorkitronHook} from "../src/ZorkitronHook.sol";
+import "forge-std/console.sol";
 
-  contract ZorkitronHookTest is BaseTest {
+contract ZorkitronHookTest is BaseTest {
     using EasyPosm for IPositionManager;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
     using StateLibrary for IPoolManager;
-    
+
     Currency currency0;
     Currency currency1;
- 
+
     PoolKey poolKey;
 
     ZorkitronHook hook;
@@ -38,55 +38,54 @@
     int24 tickUpper;
 
     function setUp() public {
-      console.log("====================================");
-      console.log("INSIDE setUp() function in ZorkitronHookTest");
-      console.log("====================================");
+        console.log("====================================");
+        console.log("INSIDE setUp() function in ZorkitronHookTest");
+        console.log("====================================");
 
-      // Deploys all required artifacts
-      deployArtifactsAndLabel();
-      
-      (currency0, currency1) = deployCurrencyPair();
+        // Deploys all required artifacts
+        deployArtifactsAndLabel();
 
-      address flags = address(
-        uint160(
-          Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
-        ) ^ (0x4444 << 144)   
-      );
+        (currency0, currency1) = deployCurrencyPair();
 
-      address zorkitronRouterAddr = deployCode("ZorkitronRouter.sol");
-      bytes memory constructorArgs = abi.encode(poolManager, positionManager, zorkitronRouterAddr);
+        address flags =
+            address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
+            | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG    
+        ) ^ (0x4444 << 144));
 
-      console.log("----- zorkitronRouterAddr ------");
-      console.logAddress(zorkitronRouterAddr);
-      console.log("----constructorArgs-----");
-      console.logBytes(constructorArgs);
-      console.log("----flags-----");
-      console.log(flags);
-     
-      deployCodeTo("ZorkitronHook.sol", constructorArgs, flags);
-      hook = ZorkitronHook(flags);
+        address zorkitronRouterAddr = deployCode("ZorkitronRouter.sol");
+        bytes memory constructorArgs = abi.encode(poolManager, positionManager, zorkitronRouterAddr);
 
-      // Create the pool
-      poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
-      poolId = poolKey.toId();
+        console.log("----- zorkitronRouterAddr ------");
+        console.logAddress(zorkitronRouterAddr);
+        console.log("----constructorArgs-----");
+        console.logBytes(constructorArgs);
+        console.log("----flags-----");
+        console.log(flags);
 
-      // bytes memory hookData = abi.encode(block.timestamp);
-      poolManager.initialize(poolKey, Constants.SQRT_PRICE_1_1);
+        deployCodeTo("ZorkitronHook.sol", constructorArgs, flags);
+        hook = ZorkitronHook(flags);
 
-      // Provide full-range liquidity to the pool
-      tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
-      tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
+        // Create the pool
+        poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
+        poolId = poolKey.toId();
 
-      uint128 liquidityAmount = 100e18;
+        // bytes memory hookData = abi.encode(block.timestamp);
+        poolManager.initialize(poolKey, Constants.SQRT_PRICE_1_1);
 
-      (uint256 amount0Expected, uint256 amount1Expected) = LiquidityAmounts.getAmountsForLiquidity(
-        Constants.SQRT_PRICE_1_1,
-        TickMath.getSqrtPriceAtTick(tickLower),
-        TickMath.getSqrtPriceAtTick(tickUpper),
-        liquidityAmount
-      );
-      
-      (tokenId,) = positionManager.mint(
+        // Provide full-range liquidity to the pool
+        tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
+        tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
+
+        uint128 liquidityAmount = 100e18;
+
+        (uint256 amount0Expected, uint256 amount1Expected) = LiquidityAmounts.getAmountsForLiquidity(
+            Constants.SQRT_PRICE_1_1,
+            TickMath.getSqrtPriceAtTick(tickLower),
+            TickMath.getSqrtPriceAtTick(tickUpper),
+            liquidityAmount
+        );
+
+        (tokenId,) = positionManager.mint(
             poolKey,
             tickLower,
             tickUpper,
@@ -96,19 +95,17 @@
             address(this),
             block.timestamp,
             Constants.ZERO_BYTES
-      );
+        );
 
-      console.log('---- after calling positionManager.mint(), the tokenId iz ------');
-      console.log(tokenId);
-  
-  }
+        console.log("---- after calling positionManager.mint(), the tokenId iz ------");
+        console.log(tokenId);
+    }
 
-  function testZorkitronHooks() public {
-    assertEq(true, true);
-  }
-  
-  function testZorkitronHooksTwo() public {
-    assertEq(true, true);
-  }
+    function testZorkitronHooks() public {
+        assertEq(true, true);
+    }
 
+    function testZorkitronHooksTwo() public {
+        assertEq(true, true);
+    }
 }

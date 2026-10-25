@@ -11,9 +11,7 @@ import {ZorkitronRouter} from "../src/ZorkitronRouter.sol";
 contract DeployHookScript is BaseScript {
     function run() public {
         // hook contracts must have specific flags encoded in the address
-        uint160 flags = uint160(
-            Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
-        );
+        uint160 flags = uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG);
 
         // Mine a salt that will produce a hook address with the correct flags
         bytes memory constructorArgs = abi.encode(poolManager);

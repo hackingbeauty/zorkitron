@@ -4,8 +4,7 @@ pragma solidity ^0.8.26;
 import {ZorkitronHook} from "../ZorkitronHook.sol";
 
 interface IZorkitronRouter {
-    function depositLiquidity(
-        uint256 tokenId
+    function depositLiquidity(uint256 tokenId)
         // address _currency0,
         // address _currency1
         // int24 tickLower,
@@ -14,7 +13,8 @@ interface IZorkitronRouter {
         // uint128 amount0Max,
         // uint128 amount1Max,
         // uint256 ethToSend
-    ) external returns (bool success);
+        external
+        returns (bool success);
     // function depositCollateral(address owner) external returns (bool success);
     function removeLiquidity(address owner) external returns (bool success);
     // function setHookContract(address _hookContractAddr) external;
