@@ -2,12 +2,13 @@
 pragma solidity ^0.8.26;
 
 import {BaseHook} from "uniswap-hooks/base/BaseHook.sol";
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -15,12 +16,30 @@ import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import "forge-std/console.sol";
 
-contract ZorkitronHook is BaseHook {
+contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     IPositionManager posm;
     address zorkitronRouterAddr;
 
+    /// @dev The pool key for the hook.  Note that the hook supports only one pool key.
+    PoolKey private _poolKey;
+
+    /// @dev Errow thrown when trying to initialize a pool that has already been initialized.
+    error PoolAlreadyInitialized();
+
+    /// @dev Error thrown when attempting to interact with a pool that has not been initialized.
+    error PoolNotInitialized();
+
+    /**
+     * @dev Emitted when a `owner` adds rehypothecated `shares` to the `poolKey` pool,
+     * transferring `amount0` of `currency0` and `amount1` of `currency1` to the hook.
+     */
+    event ReHypothecatedLiquidityAdded(
+        address indexed owner, PoolKey indexed poolKey, uint256 shares, uint256 amount0, uint256 amount1
+    );
+
     constructor(IPoolManager _poolManager, IPositionManager _posm, address _zorkitronRouterAddr)
         BaseHook(_poolManager)
+        ERC20("Zorkitron","ZORK")
     {
         posm = _posm;
         zorkitronRouterAddr = _zorkitronRouterAddr;
@@ -28,7 +47,7 @@ contract ZorkitronHook is BaseHook {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: true,
@@ -45,7 +64,59 @@ contract ZorkitronHook is BaseHook {
         });
     }
 
-    
+    /**
+     * @dev Initialize the hook's `poolKey` pool.  The key stored by the hook is unique and
+     * should not be modified so that it can safely be used across the hook's lifecycle.
+     * Note that the hook supports only one pool key.  
+     *  
+     * WARNING: Pool initialization is permissionless and permanently binds the hook to the first key it sees,
+     * so a third party can front-run it with an unintended pool.  Consider initializing the pool atomically
+     * with the hook's deployment, or overriding this function to reject an unexpected key.
+     */
+    function _beforeInitialize(address, PoolKey calldata key, uint160) internal override returns (bytes4) {
+        if (address(_poolKey.hooks) != address(0)) revert PoolAlreadyInitialized();
+        _poolKey = key;
+        return this.beforeInitialize.selector;
+    }    
+
+    /**
+     * @dev Adds rehypothecated liquidity to their corresponding yield sources and mints `shares` to the `receiver`.
+     * 
+     * Liquidity is added in the ratio determined by the hook's existing balances in yield sources.
+     * Assets are deposited into yield sources where they earn yield when idle and can be dynamically
+     * used as pool liquidity during swaps.
+     * 
+     * Returns a balance `delta` representing the assets deposited into the hook.
+     * 
+     * Requirements:
+     *  - Pool must be initialized
+     *  - Pool must have been seeded (see {seedLiquidity})
+     *  - Sender must have sufficient token balances
+     *  - Sender must have approved the hook to spend the required tokens
+     *  - Ammounts required must not exceed `amount0Max` of `currency0` and `amount1Max` of `currency1`
+     */
+
+    function addRehypothecatedLiquidity(uint256 shares, uint256 amount0Max, uint256 amount1Max)
+        payable
+        external 
+        nonReentrant
+        returns (BalanceDelta delta) 
+    {
+        if (address(_poolKey.hooks) == address(0)) revert PoolNotInitialized();
+
+
+        _transferFromSenderToHook(_poolKey.currency0, amount0, msg.sender);
+        _transferFromSenderToHook(_poolKey.currency1, amount1, msg.sender);
+
+
+        // Skip zero-amount deposits, which some yield sources reject (e.g. when one side is proportionally empty)
+        if (amount0 > 0) _depositToYieldSource(_poolKey.currency0, amount0);
+        if (amount1 > 0) _depositToYieldSource(_poolKey.currency1, amount1);
+
+        _mint(msg.sender, shares);
+
+        emit ReHypothecatedLiquidityAdded(msg.sender, _poolKey, shares, amount0, amount1);
+    }
 
 
 
