@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {BaseHook} from "uniswap-hooks/base/BaseHook.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
@@ -12,6 +13,7 @@ import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/Reentrancy
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import "forge-std/console.sol";
@@ -28,6 +30,12 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
 
     /// @dev Error thrown when attempting to interact with a pool that has not been initialized.
     error PoolNotInitialized();
+
+    /// @dev Error thrown when the message value doesn't match the expected amount for native ETH deposits.
+    error InvalidMsgValue();
+
+    /// @dev Error thrown when the refund fails
+    error RefundFailed();
 
     /**
      * @dev Emitted when a `owner` adds rehypothecated `shares` to the `poolKey` pool,
@@ -189,4 +197,20 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
 
         return (BaseHook.afterAddLiquidity.selector, delta);
     }
+
+    /**
+     * @dev Transfers the `amount` of `currency` from the `sender` to the hook
+     */
+    function _transferFromSenderToHook(Currency currency, uint256 amount, address sender) internal {
+        if (!currency.isAddressZero()) { // If the token is NOT ETH
+            IERC20(Currency.unwrap(currency)).safeTransferFrom(sender, address(this), amount);
+        } else { // Else if the token IS ETH
+            if (msg.value < amount) revert InvalidMsgValue();
+            if (msg.value > amount) {
+                (bool success,) = msg.sender.call{value: msg.value - amount}(""); //calls the receive() or fallback function on msg.sender
+                if (!success) revert RefundFailed();
+            }
+        }
+    }
+
 }
