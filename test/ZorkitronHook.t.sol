@@ -27,9 +27,7 @@ contract ZorkitronHookTest is BaseTest {
 
     Currency currency0;
     Currency currency1;
-
     PoolKey poolKey;
-
     ZorkitronHook hook;
     PoolId poolId;
 
@@ -49,7 +47,7 @@ contract ZorkitronHookTest is BaseTest {
 
         address flags =
             address(uint160(Hooks.AFTER_ADD_LIQUIDITY_FLAG | Hooks.AFTER_REMOVE_LIQUIDITY_FLAG
-            | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG    
+            | Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.BEFORE_INITIALIZE_FLAG 
         ) ^ (0x4444 << 144));
 
         address zorkitronRouterAddr = deployCode("ZorkitronRouter.sol");

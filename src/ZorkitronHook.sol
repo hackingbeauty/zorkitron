@@ -11,6 +11,7 @@ import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
@@ -24,7 +25,6 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     IPositionManager posm;
     address zorkitronRouterAddr;
     using Math for uint256;
-
 
     /// @dev The pool key for the hook.  Note that the hook supports only one pool key.
     PoolKey private _poolKey;
@@ -51,11 +51,17 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     /// @dev Error thrown when adding liquidity before the pool has been seeded.
     error NotSeeded();
 
+    /// @dev Error thrown when seeding a pool that still has outstanding shares.
+    error AlreadySeeded();
+
     /// @dev Error thrown when attempting to add or remove liquidity with zero shares.
     error ZeroShares();
 
     /// @dev Error thrown when the amounts of an addition or removal exceed the caller's bounds
     error TooMuchSlippage();
+
+    /// @dev Error thrown when a seed would mint fewer than the minimum safe initial `shares`, given `minShares`
+    error InsufficientSeed(uint256 shares, uint256 minShares);
 
     /**
      * @dev Emitted when a `owner` adds rehypothecated `shares` to the `poolKey` pool,
@@ -107,19 +113,58 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     }
 
     /**
-     * @dev Initialize the hook's `poolKey` pool.  The key stored by the hook is unique and
-     * should not be modified so that it can safely be used across the hook's lifecycle.
-     * Note that the hook supports only one pool key.  
+     * 
+     * @dev Seeds the pool with its first liquidity, depositing `amount0` of `currency0` and `amount1` of
+     * `currency1` into the yield sources and minting `sqrt(amount0 * amount1)` shares to the caller, in a
+     * UniswapV2 like fashion.  The deposited amounts set the ratio at which {addRehypothecatedLiquidity}
+     * prices every later addition.
+     * 
+     * Callable permissionlessly whenever the pool has not outstanding shares: at genesis, or to revive the pool
+     * after a full withdrawal.  The minted shares must be at least `100 * 10 ** _decimalsOffset()`, so the supply
+     * determines the virtual-shares offset used in {_shareToAmount} and the share price cannot be inflated.
+     * 
+     * Returns the `shares` minted and a balance `delta` representing the assets deposited into the hook.
+     * 
+     * NOTE: After a full withdrawal, the virtual shares' residual stays in the yield sources and the next seeder
+     * can reedem it.  Consider overring this function to restrict the caller.
+     * 
+     * NOTE: The amounts should be provided close to the pool's current price, otherwise part of the seeded
+     * liquidity may sit idel until swaps rebalance it.  See {_getLiquidityToUse}.
+     * 
+     * WARNING: A third party can front-run the seed with a skewed ratio that leaves the hook with negligible
+     * usable liquidity.  Consider seeding atomically with pool initialization, or overriding this function
+     * to restrict the caller.
+     * 
+     * Requirements:
+     * - Pool must be initialized
+     * - Pool must have no outstanding shares (`totalSupply() == 0`)
+     * - Resulting shares must be at least `100 * 10 ** _decimalsOffset()`
+     * - Sender must have approved the hook to spend the required tokens 
      *  
-     * WARNING: Pool initialization is permissionless and permanently binds the hook to the first key it sees,
-     * so a third party can front-run it with an unintended pool.  Consider initializing the pool atomically
-     * with the hook's deployment, or overriding this function to reject an unexpected key.
-     */
-    function _beforeInitialize(address, PoolKey calldata key, uint160) internal override returns (bytes4) {
-        if (address(_poolKey.hooks) != address(0)) revert PoolAlreadyInitialized();
-        _poolKey = key;
-        return this.beforeInitialize.selector;
-    }    
+     */    
+    function seedLiquidity(uint256 amount0, uint256 amount1)
+        public
+        payable
+        nonReentrant
+        returns (uint256 shares, BalanceDelta delta)
+    {
+        if (address(_poolKey.hooks) == address(0)) revert PoolNotInitialized();
+        if (totalSupply() != 0 ) revert AlreadySeeded();
+
+        shares = Math.sqrt(amount0 * amount1);
+        uint256 minShares = 100 * 10 ** uint256(_decimalsOffset());
+        if (shares < minShares) revert InsufficientSeed(shares, minShares);
+
+        _transferFromSenderToHook(_poolKey.currency0, amount0, msg.sender);
+        _transferFromSenderToHook(_poolKey.currency1, amount1, msg.sender);        
+
+        _depositToVault(_poolKey.currency0, amount0);
+        _depositToVault(_poolKey.currency1, amount1);
+
+        _mint(msg.sender, shares);
+
+        emit ReHypothecatedLiquidityAdded(msg.sender, _poolKey, shares, amount0, amount1);
+    }
 
     /**
      * @dev Adds rehypothecated liquidity to their corresponding yield sources and mints `shares` to the `receiver`.
@@ -167,6 +212,63 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     // -----------------------------------------------
     // NOTE: see IHooks.sol for function documentation
     // -----------------------------------------------
+    /**
+     * @dev Initialize the hook's `poolKey` pool.  The key stored by the hook is unique and
+     * should not be modified so that it can safely be used across the hook's lifecycle.
+     * Note that the hook supports only one pool key.  
+     *  
+     * WARNING: Pool initialization is permissionless and permanently binds the hook to the first key it sees,
+     * so a third party can front-run it with an unintended pool.  Consider initializing the pool atomically
+     * with the hook's deployment, or overriding this function to reject an unexpected key.
+     */
+    function _beforeInitialize(address, PoolKey calldata key, uint160) internal override returns (bytes4) {
+        if (address(_poolKey.hooks) != address(0)) revert PoolAlreadyInitialized();
+        _poolKey = key;
+        return this.beforeInitialize.selector;
+    }
+
+    /**
+     * @dev Hook executed before a swap operation to provide liquidity from rehypothecated assets.
+     * 
+     * Gets the amount of liquidity to be provided from yield sources/vaults and temporarily adds it to 
+     * the pool instead thanks to Uniswap v4's Flash Accounting model.  This addition creates a currencyDelta
+     * to the hook, which must be settled during the `_afterSwap` function before locking the poolManager again.
+     */
+    function _beforeSwap(
+        address, /* sender */
+        PoolKey calldata, /* key */
+        SwapParams calldata, /* params */
+        bytes calldata /* hookData */
+    ) 
+        internal
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        // To Do
+    }
+
+    /**
+     * @dev Hook executed after a swap operation to remove temporary liquidity and rebalance assets.
+     * 
+     * Removes the liquidity that was temporarily added in `_beforeSwap`, and resolves the hook's 
+     * deltas in each currency in order to neutralize any pending debits or credits. 
+     */
+    function _afterSwap(
+        address, /* sender */
+        PoolKey calldata, /* key */
+        SwapParams calldata, /* params */
+        BalanceDelta, /* delta */
+        bytes calldata /* hookData */
+    )
+        internal
+        override
+        returns(bytes4, int128) 
+    {
+        // To Do
+    }
+
+
+    
     function _afterAddLiquidity(
         address sender,
         PoolKey calldata key,
