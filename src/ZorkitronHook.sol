@@ -2,14 +2,16 @@
 pragma solidity ^0.8.26;
 
 import {BaseHook} from "uniswap-hooks/base/BaseHook.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
@@ -21,9 +23,15 @@ import "forge-std/console.sol";
 contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     IPositionManager posm;
     address zorkitronRouterAddr;
+    using Math for uint256;
+
 
     /// @dev The pool key for the hook.  Note that the hook supports only one pool key.
     PoolKey private _poolKey;
+
+    /// @dev The address of the Vaults
+    address private _vault0;
+    address private _vault1;
 
     /// @dev Errow thrown when trying to initialize a pool that has already been initialized.
     error PoolAlreadyInitialized();
@@ -34,8 +42,20 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     /// @dev Error thrown when the message value doesn't match the expected amount for native ETH deposits.
     error InvalidMsgValue();
 
-    /// @dev Error thrown when the refund fails
+    /// @dev Error thrown when the refund fails.
     error RefundFailed();
+
+    /// @dev Error thrown when currency is ETH.
+    error InvalidCurrency();
+
+    /// @dev Error thrown when adding liquidity before the pool has been seeded.
+    error NotSeeded();
+
+    /// @dev Error thrown when attempting to add or remove liquidity with zero shares.
+    error ZeroShares();
+
+    /// @dev Error thrown when the amounts of an addition or removal exceed the caller's bounds
+    error TooMuchSlippage();
 
     /**
      * @dev Emitted when a `owner` adds rehypothecated `shares` to the `poolKey` pool,
@@ -45,12 +65,26 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         address indexed owner, PoolKey indexed poolKey, uint256 shares, uint256 amount0, uint256 amount1
     );
 
+    /**
+     * @dev Emitted when the addresses for the Vaults are set
+     */
+    event VaultsSet(address indexed vault0, address indexed vault1);
+
     constructor(IPoolManager _poolManager, IPositionManager _posm, address _zorkitronRouterAddr)
         BaseHook(_poolManager)
         ERC20("Zorkitron","ZORK")
     {
         posm = _posm;
         zorkitronRouterAddr = _zorkitronRouterAddr;
+    }
+
+    /**
+     * @dev Set the addresses of the Vaults.
+     */
+    function setVaults(address vault0_, address vault1_) external {
+        _vault0 = vault0_;
+        _vault1 = vault1_;
+        emit VaultsSet(_vault0, _vault1);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -111,27 +145,28 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         returns (BalanceDelta delta) 
     {
         if (address(_poolKey.hooks) == address(0)) revert PoolNotInitialized();
+        if (totalSupply() == 0) revert NotSeeded();
+        if (shares == 0) revert ZeroShares();
+
+        (uint256 amount0, uint256 amount1) = previewMint(shares);
+        if (amount0 > amount0Max || amount1 > amount1Max) revert TooMuchSlippage();
 
 
         _transferFromSenderToHook(_poolKey.currency0, amount0, msg.sender);
         _transferFromSenderToHook(_poolKey.currency1, amount1, msg.sender);
 
-
         // Skip zero-amount deposits, which some yield sources reject (e.g. when one side is proportionally empty)
-        if (amount0 > 0) _depositToYieldSource(_poolKey.currency0, amount0);
-        if (amount1 > 0) _depositToYieldSource(_poolKey.currency1, amount1);
+        if (amount0 > 0) _depositToVault(_poolKey.currency0, amount0);
+        if (amount1 > 0) _depositToVault(_poolKey.currency1, amount1);
 
         _mint(msg.sender, shares);
 
         emit ReHypothecatedLiquidityAdded(msg.sender, _poolKey, shares, amount0, amount1);
     }
 
-
-
     // -----------------------------------------------
     // NOTE: see IHooks.sol for function documentation
     // -----------------------------------------------
-
     function _afterAddLiquidity(
         address sender,
         PoolKey calldata key,
@@ -203,7 +238,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      */
     function _transferFromSenderToHook(Currency currency, uint256 amount, address sender) internal {
         if (!currency.isAddressZero()) { // If the token is NOT ETH
-            IERC20(Currency.unwrap(currency)).safeTransferFrom(sender, address(this), amount);
+            IERC20(Currency.unwrap(currency)).transferFrom(sender, address(this), amount);
         } else { // Else if the token IS ETH
             if (msg.value < amount) revert InvalidMsgValue();
             if (msg.value > amount) {
@@ -213,4 +248,102 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         }
     }
 
+    /**
+     * @dev Deposits a specified `amount` of `currency` into its corresponding vault.
+     * 
+     * Note: Must be implemented and adapted for the desired type of yield sources, such as
+     * ERC-4626 Vaults, or any custom DeFi protocol interface, optionally handling native currency.
+     * 
+     * Note: Must increase {_getAmountInYieldSource} by `amount` and must not revert, since a revert during a swap's
+     * settlement reverts the swap.  Sources that charge fees on this call are not supported.
+     */
+    function _depositToVault(Currency currency, uint256 amount) internal {
+        if (currency.isAddressZero()) {
+            revert InvalidCurrency();
+        }
+
+        address vaultAddr = getVaultAddress(currency);
+        IERC20(Currency.unwrap(currency)).approve(vaultAddr, amount);
+        IERC4626(vaultAddr).deposit(amount, address(this));
+    }
+
+    /** 
+     * @dev Get the addresses of the two (2) Vaults
+     */
+    function getVaultAddress(Currency currency) public view returns (address) {
+       PoolKey memory key = _poolKey;
+       if (key.currency0 == currency) return _vault0;
+       if (key.currency1 == currency) return _vault1;
+       revert InvalidCurrency();
+    }
+
+    /**
+     * @dev Preview the amounts of currency0 and currency1 required for minting a specific amount of shares.
+     * 
+     * NOTE: Rounds up, benefiting current Liquidity Providers
+     */
+    function previewMint(uint256 shares) public view returns (uint256 amount0, uint256 amount1) {
+        return _sharesToAmounts(shares, Math.Rounding.Ceil);
+    }
+
+    /**
+     * @dev Calculates the amounts of currency0 and currency1 equivalent to a given amount of `shares`, as a 
+     * proportional claim over the hook's balances in the yield sources, using the given rounding direction.
+     * 
+     * Reverts with {NotSeeded} when no shares have been minted yet, since the pool has no defined ratio
+     * before {seedLiquidity}.
+     */
+    function _sharesToAmounts(uint256 shares, Math.Rounding rounding) 
+        internal
+        view
+        returns (uint256 amount0, uint256 amount1)
+    {
+        amount0 = _shareToAmount(shares, _poolKey.currency0, rounding);
+        amount1 = _shareToAmount(shares, _poolKey.currency1, rounding);
+    }
+
+    /**
+     * @dev Coverts a given `shares` amount to the corresponding `currency` amount, as its proportional claim
+     * over the hook's balance of `currency` in the yield source, using the given rounding direction.
+     * 
+     * Uses an EIP-4626-like virtual offset (see {decimalOffset}) to defend the share price against inflation,
+     * so a share is worth `(balance + 1) / (totalSupply + 10 ** _decimalsOffset())` of the `currency` balance.
+     * Reverts with {NotSeeded} before the pool is seeded.
+     */
+    function _shareToAmount(uint256 shares, Currency currency, Math.Rounding rounding)
+        internal
+        view
+        returns (uint256 amount)
+    {
+        uint256 supply = totalSupply();
+        if (supply == 0) revert NotSeeded();
+        return shares.mulDiv(_getAmountInYieldSource(currency) + 1, supply + 10 ** uint256(_decimalsOffset()), rounding);
+    }
+
+    /**
+     * @dev Gets the `amount` of `currency` deposited in its corresponding yield source.
+     * 
+     * Note: Must be implemented and adapted for the desired type of yield sources, such as ERC-4626 Vaults,
+     * or any custom DeFi protocol interface, optionally handling native currency. 
+     */
+    function _getAmountInYieldSource(Currency currency) internal view returns (uint256 amount) {
+        // To Do
+    }
+
+    /**
+     * @dev Returns the decimal offset used for the EIP-4626-like virtual shares that defend the share price
+     * against inflation.  The initial supply mined by {seedLiquidity} is required to be at least `100 * 10 ** _decimalsOffset()`,
+     * keeping the maximum share price drift around 1%.
+     * 
+     * Defaults to `6`, which suits most token pairs.  Can be overridden to strengthen the defense with a higher offset,
+     * at the cost of a larger minimum seed, for example for high-decimal pairs.
+     * 
+     */
+    function _decimalsOffset() internal view returns (uint8) {
+        return 6;
+    }
+
+    /// @dev Allows the hook to receive native ETH from the yield sources.
+    /// solhint-disable-next-line
+    receive() external payable {}
 }
