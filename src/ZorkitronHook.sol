@@ -5,18 +5,23 @@ import {BaseHook} from "uniswap-hooks/base/BaseHook.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {BalanceDeltaLibrary, BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
 import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
+import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {CurrencySettler} from "./utils/CurrencySettler.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import "forge-std/console.sol";
@@ -24,7 +29,11 @@ import "forge-std/console.sol";
 contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     IPositionManager posm;
     address zorkitronRouterAddr;
+    using SafeCast for *;
     using Math for uint256;
+    using TransientStateLibrary for IPoolManager; // Wrapper that allows you to read temporary data in PoolManager
+    using StateLibrary for IPoolManager; // Wrapper that allows you to read the internal state of a pool in PoolManager
+    using CurrencySettler for Currency; //
 
     /// @dev The pool key for the hook.  Note that the hook supports only one pool key.
     PoolKey private _poolKey;
@@ -57,11 +66,15 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     /// @dev Error thrown when attempting to add or remove liquidity with zero shares.
     error ZeroShares();
 
-    /// @dev Error thrown when the amounts of an addition or removal exceed the caller's bounds
+    /// @dev Error thrown when the amounts of an addition or removal exceed the caller's bounds.
     error TooMuchSlippage();
 
-    /// @dev Error thrown when a seed would mint fewer than the minimum safe initial `shares`, given `minShares`
+    /// @dev Error thrown when a seed would mint fewer than the minimum safe initial `shares`, given `minShares`.
     error InsufficientSeed(uint256 shares, uint256 minShares);
+
+    /// @dev Errow thrown when a swap is attempted while the just-in-time position would size to zero,
+    /// so the hook cannot back the swap.
+    error NoUsableLiquidity();
 
     /**
      * @dev Emitted when a `owner` adds rehypothecated `shares` to the `poolKey` pool,
@@ -244,7 +257,23 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        // To Do
+        // Take the JIT lock: block liquidity operations from reentering mid-settlement, and block a swap
+        // from running inside a liquidity operation or another swap.  Released at the end of `_afterSwap`.
+        // if (_reentrancyGuardEntered() || _isJITLocked()) revert JITLocked();
+        // _setJITLocked(true);
+
+        // Snapshot the positions tick bounds so `afterSwap` removes exactly what is added here.
+        // _snapshotActiveTicks();
+
+        // Get the liquidity to be used from the amounts currently deposited into the yield sources/vaults.
+        // The hook is the pool's only liquidity, so a swap that it cannot back must revert.
+        uint256 liquidityToUse = _getLiquidityToUse(_activeTickLower(), _activeTickUpper());
+
+        // slither-disable-next-line incorrect-equality
+        if (liquidityToUse == 0) revert NoUsableLiquidity();
+        _modifyLiquidity(liquidityToUse.toInt256());
+
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /**
@@ -255,7 +284,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      */
     function _afterSwap(
         address, /* sender */
-        PoolKey calldata, /* key */
+        PoolKey calldata key, /* key */
         SwapParams calldata, /* params */
         BalanceDelta, /* delta */
         bytes calldata /* hookData */
@@ -264,9 +293,22 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         override
         returns(bytes4, int128) 
     {
-        // To Do
-    }
+        // Remove all of the hook owned liquidity from the pool
+        uint128 liquidity = _getHookPositionLiquidity();
+        if (liquidity > 0) {
+            _modifyLiquidity(-liquidity.toInt256());
 
+            // Take or settle any pending deltas with the PoolManager
+            _resolveHookDelta(key.currency0);
+            _resolveHookDelta(key.currency1);
+        }
+
+        // Release the JIT lock once settlement (and its external yield source/vault calls) is complete.
+        // _setJITLocked(false);
+
+        return (this.afterSwap.selector, 0);
+
+    }
 
     
     function _afterAddLiquidity(
@@ -429,6 +471,99 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      * or any custom DeFi protocol interface, optionally handling native currency. 
      */
     function _getAmountInYieldSource(Currency currency) internal view returns (uint256 amount) {
+        // To Do
+    }
+
+    /**
+     * @dev Calculates the `liquidity` to be provided just-in-time for incoming swaps.
+     * 
+     * Be default, returns the maximum liquidity that can be provided given the balances the hook can
+     * currenty withdraw from the yield sources/vaults (see {getMaxWithdrawFromVault}), so the position
+     * removed in `afterSwap` never exceeds what the yield sources/vaults can return in the same transaction.
+     * 
+     * Since the internal pool price (ratio of currency0 to currency1) must be preserved for proviing
+     * liquidity to the single hook-owned position range, not necessarily all the assets in the yield sources/vaults
+     * may be utilizable as liquidity if the ratio has diverged from the internal pool price
+     * 
+     * i.e. if the pool price is currently [1:1], but due to divergences in the yield sources/vaults the assets are
+     * [100, 100], then only [100, 100] is utilizable and will be returend by this function in equivalent liquidity units,
+     * as it is the maximum amount of assets utilizable given the current pool price ratio.
+     * 
+     * NOTE: Since liquidity is provided and withdrawn transiently during flash accounting, it can be virtually
+     * inflated for performing "leveraged liquidity" strategies, which would give better pricing to swappers at
+     * the cost of the profitability of LP's and increased risks.
+     * 
+     * @param tickLower The lower tick of the position the liquidity is sized for.
+     * @param tickUpper The upper tick of the position the liquidity is sided for.  
+     *  
+     */
+    function _getLiquidityToUse(int24 tickLower, int24 tickUpper) internal view returns (uint256) {
+        // To Do
+        return 0;
+    }
+
+
+    /**
+     * @dev Retrieves the current `liquidity` of the hook owned liquidity position in the `_poolKey` pool.
+     * 
+     * NOTE: Given that just-in-time liquidity provisioning is performed, this function will only return
+     * non-zero values while the liquidity is briefly inside the pool, which is exclusively between `beforeSwap`
+     * and `afterSwap`.  It will return zero in any other point in the hook lifecycle.  For determining the hook
+     * balances at any other point, use {_getAmountInYieldSource}.
+     */
+    function _getHookPositionLiquidity() internal view returns (uint128 liquidity) {
+        // Position.calculatePositionKey is a library function used to derive the unique 32-byte storage key
+        // for a liquidity position inside a pool
+        bytes32 positionKey = Position.calculatePositionKey(address(this), _activeTickLower(), _activeTickUpper(), bytes32(0));
+        
+        // getPositionLiquidity (or reading position liquidity), read the current liquidiyt units assigned to
+        // a specific liquidity position  
+        return poolManager.getPositionLiquidity(_poolKey.toId(), positionKey);
+    }
+
+    /**
+     * @dev Takes or settles any pending `currencyDelta` delta with the poolManager by transferring from the 
+     * yield sources/vaults to the poolManager and vice versa, effectively neutralizing the Flash Accounting
+     * deltas before being ablet to lock the poolManager again. 
+     *  
+     */
+    function _resolveHookDelta(Currency currency) internal {
+        int256 currencyDelta = poolManager.currencyDelta(address(this), currency);
+        if (currencyDelta > 0) {
+            currency.take(poolManager, address(this), currencyDelta.toUint256(), false);
+        }
+        if (currencyDelta < 0 ) {
+            currency.settle(poolManager, address(this), (-currencyDelta).toUint256(), false);
+        }
+    }
+
+
+    /**
+     * @dev Modifies the hook's liquidity position in the pool, at the tick bounds snapshotted for the
+     * current swap (see {snapshotActiveTicks})
+     * 
+     * Positive liquidityDelta adds liquidity, while negative removes it.
+     */
+    function _modifyLiquidity(int256 liquidityDelta) internal returns (BalanceDelta delta) {
+        (delta,) = poolManager.modifyLiquidity(
+            _poolKey,
+            ModifyLiquidityParams({
+                tickLower: _activeTickLower(),
+                tickUpper: _activeTickUpper(),
+                liquidityDelta: liquidityDelta,
+                salt: bytes32(0)
+            }),
+            ""
+        );
+    }
+
+    /// @dev The lower tick of the just-in-time position snapshotted for the current swap.
+    function _activeTickLower() private view returns (int24) {
+        // To Do
+    }
+
+    /// @dev The upper tick of the just-in-time position shapshotted for the current swap.
+    function _activeTickUpper() private view returns (int24) {
         // To Do
     }
 
