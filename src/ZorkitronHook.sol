@@ -16,12 +16,17 @@ import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientSta
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import {Position} from "@uniswap/v4-core/src/libraries/Position.sol";
 import {PositionInfo} from "v4-periphery/src/libraries/PositionInfoLibrary.sol";
+import {Pool} from "@uniswap/v4-core/src/libraries/Pool.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {CurrencySettler} from "./utils/CurrencySettler.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
 import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import "forge-std/console.sol";
@@ -209,7 +214,6 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         (uint256 amount0, uint256 amount1) = previewMint(shares);
         if (amount0 > amount0Max || amount1 > amount1Max) revert TooMuchSlippage();
 
-
         _transferFromSenderToHook(_poolKey.currency0, amount0, msg.sender);
         _transferFromSenderToHook(_poolKey.currency1, amount1, msg.sender);
 
@@ -307,10 +311,8 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         // _setJITLocked(false);
 
         return (this.afterSwap.selector, 0);
-
     }
 
-    
     function _afterAddLiquidity(
         address sender,
         PoolKey calldata key,
@@ -474,6 +476,22 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         // To Do
     }
 
+    /** 
+     * @dev Returns the `amount` of `currency` that can currently be withdrawn from its yield source/vault.
+     * 
+     * Used to size the just-in-time liquidity provided during swaps, so the hook never provisions more than it
+     * can withdraw back in the same transaction.  Share pricing instead uses {_getAmountInYieldSource}, the full
+     * reported balance.
+     * 
+     * Defaults to {_getAmountInYieldSource}.  Override for yield sources/vaults whose immediately-withdrawable
+     * amount can be below the reported balance, such as ERC-4626 `maxWithdraw`, or capped or gated sources.
+     */
+
+    function _getMaxWithdrawFromYieldSource(Currency currency) internal view returns (uint256) {
+        return _getAmountInYieldSource(currency);
+    }
+
+
     /**
      * @dev Calculates the `liquidity` to be provided just-in-time for incoming swaps.
      * 
@@ -499,7 +517,39 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      */
     function _getLiquidityToUse(int24 tickLower, int24 tickUpper) internal view returns (uint256) {
         // To Do
-        return 0;
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(_poolKey.toId());
+        uint160 sqrtPriceLowerX96 = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtPriceUpperX96 = TickMath.getSqrtPriceAtTick(tickUpper);
+
+        // A position cannot take either boundary tick past the pool's per-tick gross-liquidity limit, so cap
+        // the liquidity there and leave any excess backing idle.
+        uint128 maxLiquidity = Pool.tickSpacingToMaxLiquidityPerTick(_poolKey.tickSpacing);
+
+        // Each currency limits the liquidity over its side of the price.  A side is capped before its
+        // liquidity is computed, so a currency that does not limit the position cannot overflow the calculation.
+        uint256 liquidity0 = maxLiquidity;
+        if (sqrtPriceX96 < sqrtPriceUpperX96) {
+            uint160 sqrtPriceAX96 = sqrtPriceX96 > sqrtPriceLowerX96 ? sqrtPriceX96 : sqrtPriceLowerX96;
+            uint256 amount0 = _getMaxWithdrawFromYieldSource(_poolKey.currency0);
+            if (amount0 < SqrtPriceMath.getAmount0Delta(sqrtPriceAX96, sqrtPriceUpperX96, maxLiquidity, true)) {
+                liquidity0 = FullMath.mulDiv(
+                    amount0,
+                    FullMath.mulDiv(sqrtPriceAX96, sqrtPriceUpperX96, FixedPoint96.Q96),
+                    sqrtPriceUpperX96 - sqrtPriceAX96
+                );
+            }
+        }
+
+        uint256 liquidity1 = maxLiquidity;
+        if (sqrtPriceX96 > sqrtPriceLowerX96) {
+            uint160 sqrtPriceBX96 = sqrtPriceX96 < sqrtPriceUpperX96 ? sqrtPriceX96 : sqrtPriceUpperX96;
+            uint256 amount1 = _getMaxWithdrawFromYieldSource(_poolKey.currency1);
+            if (amount1 < SqrtPriceMath.getAmount1Delta(sqrtPriceLowerX96, sqrtPriceBX96, maxLiquidity, true)) {
+                liquidity1 = FullMath.mulDiv(amount1, FixedPoint96.Q96, sqrtPriceBX96 - sqrtPriceLowerX96);
+            }
+        }
+
+        return Math.min(Math.min(liquidity0, liquidity1), maxLiquidity);
     }
 
 
