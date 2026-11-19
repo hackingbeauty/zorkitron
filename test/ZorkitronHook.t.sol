@@ -35,23 +35,6 @@ contract ZorkitronHookTest is BaseTest {
     int24 tickLower;
     int24 tickUpper;
 
-// Test cases
-
-// 1- A pool must be seeded via seedLiquidity before liquidity can be added through addRehypothecatedLiquidity
-
-// 2 - Seending iso only allowed whenever the pool has no outstanding shares
-// 	— at genesis
-// 	— or to revive the pool after a full withdrawal
-
-
-// 3 - The hook’s position must default to Uniswapv2 like full-range positions
-
-// 4 - The hooks position range must be able to be customized by overriding getTickLower and getTickUpper
-
-
-
-
-
     function setUp() public {
         console.log("====================================");
         console.log("INSIDE setUp() function in ZorkitronHookTest");
@@ -116,11 +99,35 @@ contract ZorkitronHookTest is BaseTest {
         console.log(tokenId);
     }
 
-    function testZorkitronHooks() public {
+    /**
+     * A pool must be seeded via {seedLiquidity} before liquidity can be added through
+     * {addRehypothecatedLiquidity}
+     */
+    function testPoolMustBeSeededBeforeLiquidityCanBeAdded () public {
         assertEq(true, true);
     }
 
-    function testZorkitronHooksTwo() public {
+    /**
+     * Seeding is only allowed whenever the pool has no outstanding shares
+     * i.e. at genesis, or to revive the pool after a full withdrawal
+     */
+    function testSeedingIsOnlyAllowedWhenPoolsHasNoOutstandingShares() public {
         assertEq(true, true);
     }
+
+    /**
+     * The hook's position must default to UniswapV2-like full range positions
+     */
+    function testHookPositionMustDefaultToUniswapV2LikeFullRangePositions() public {
+        assertEq(true, true);
+    }
+
+    /**
+     * The hook's position range must be able to be customized by overriding 
+     * getTickLower() and getTickUpper()
+     */
+    function testHookPositionRangeMustBeAdjustable() public {
+        assertEq(true, true);
+    }
+
 }
