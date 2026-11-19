@@ -552,7 +552,6 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         return Math.min(Math.min(liquidity0, liquidity1), maxLiquidity);
     }
 
-
     /**
      * @dev Retrieves the current `liquidity` of the hook owned liquidity position in the `_poolKey` pool.
      * 

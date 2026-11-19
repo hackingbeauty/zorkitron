@@ -1,0 +1,8 @@
+{
+	"mcpServers": {
+		"solodit-mcp": {
+			"url": "http://localhost:3000/mcp",
+			"type": "http"
+		}
+	}
+}

@@ -35,6 +35,23 @@ contract ZorkitronHookTest is BaseTest {
     int24 tickLower;
     int24 tickUpper;
 
+// Test cases
+
+// 1- A pool must be seeded via seedLiquidity before liquidity can be added through addRehypothecatedLiquidity
+
+// 2 - Seending iso only allowed whenever the pool has no outstanding shares
+// 	— at genesis
+// 	— or to revive the pool after a full withdrawal
+
+
+// 3 - The hook’s position must default to Uniswapv2 like full-range positions
+
+// 4 - The hooks position range must be able to be customized by overriding getTickLower and getTickUpper
+
+
+
+
+
     function setUp() public {
         console.log("====================================");
         console.log("INSIDE setUp() function in ZorkitronHookTest");
@@ -61,7 +78,7 @@ contract ZorkitronHookTest is BaseTest {
         console.log(flags);
 
         deployCodeTo("ZorkitronHook.sol", constructorArgs, flags);
-        hook = ZorkitronHook(flags);
+        hook = ZorkitronHook(payable(flags));
 
         // Create the pool
         poolKey = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
