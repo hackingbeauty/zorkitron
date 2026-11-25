@@ -191,6 +191,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         returns (uint256 shares, BalanceDelta delta)
     {
         if (address(_poolKey.hooks) == address(0)) revert PoolNotInitialized();
+        if (_isJITLocked()) revert JITLocked();
         if (totalSupply() != 0 ) revert AlreadySeeded();
 
         shares = Math.sqrt(amount0 * amount1);
@@ -232,6 +233,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         returns (BalanceDelta delta) 
     {
         if (address(_poolKey.hooks) == address(0)) revert PoolNotInitialized();
+        if (_isJITLocked()) revert JITLocked();
         if (totalSupply() == 0) revert NotSeeded();
         if (shares == 0) revert ZeroShares();
 
