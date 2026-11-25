@@ -12,6 +12,8 @@ import {PoolManager} from "v4-periphery/lib/v4-core/src/PoolManager.sol";
 import {IPoolManager, SwapParams, ModifyLiquidityParams} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IPositionManager} from "v4-periphery/src/PositionManager.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {SlotDerivation} from "@openzeppelin/contracts/utils/SlotDerivation.sol";
+import {TransientSlot} from "@openzeppelin/contracts/utils/TransientSlot.sol";
 import {TransientStateLibrary} from "@uniswap/v4-core/src/libraries/TransientStateLibrary.sol";
 import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
@@ -34,18 +36,34 @@ import "forge-std/console.sol";
 contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     IPositionManager posm;
     address zorkitronRouterAddr;
-    using SafeCast for *;
-    using Math for uint256;
+    
     using TransientStateLibrary for IPoolManager; // Wrapper that allows you to read temporary data in PoolManager
     using StateLibrary for IPoolManager; // Wrapper that allows you to read the internal state of a pool in PoolManager
     using CurrencySettler for Currency; //
-
+    using SafeCast for *;
+    using Math for uint256;
+    using TransientSlot for *;
+    using SlotDerivation for *;
+    
     /// @dev The pool key for the hook.  Note that the hook supports only one pool key.
     PoolKey private _poolKey;
 
     /// @dev The address of the Vaults
     address private _vault0;
     address private _vault1;
+
+    /**
+     * @dev The ERC-7201 namespaced transient storage slot for this hook.
+     * keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ReHypothecationHook")) -1)) & ~bytes32(uint256(0xff))
+     */
+    bytes32 private constant REHYPOTHECATION_HOOK_SLOT = 0x23f8264cc98f1c05acfa1795f9fb9efa795bb6c05987a0477bcc1622ab5aca00;
+
+
+    /// @dev The offset of the just-in-time position lower tick within {REHYPOTHECATION_HOOK_SLOT}
+    uint256 private constant TICK_LOWER_OFFSET = 0;
+
+    /// @dev The offset of the just-in-time position upper tick within {REHYPOTHECATION_HOOK_SLOT}
+    uint256 private constant TICK_UPPER_OFFSET = 1;
 
     /// @dev Errow thrown when trying to initialize a pool that has already been initialized.
     error PoolAlreadyInitialized();
@@ -267,7 +285,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         // _setJITLocked(true);
 
         // Snapshot the positions tick bounds so `afterSwap` removes exactly what is added here.
-        // _snapshotActiveTicks();
+        _snapshotActiveTicks();
 
         // Get the liquidity to be used from the amounts currently deposited into the yield sources/vaults.
         // The hook is the pool's only liquidity, so a swap that it cannot back must revert.
@@ -586,6 +604,25 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         }
     }
 
+    /**
+     * 
+     * @dev Returns the lower tick boundary for the hook's liquidity position.abi
+     * 
+     * Can be overriden to customize the tick boundary.
+     */
+    function getTickLower() public view virtual returns (int24) {
+        return TickMath.minUsableTick(_poolKey.tickSpacing);
+    }
+
+    /**
+     * 
+     * @dev Returns the upper tick boundary for the hook's liquidity position
+     * 
+     * Can be overriden to customize the tick boundary.
+     */
+    function getTickUpper() public view virtual returns (int24) {
+        return TickMath.maxUsableTick(_poolKey.tickSpacing);
+    }
 
     /**
      * @dev Modifies the hook's liquidity position in the pool, at the tick bounds snapshotted for the
@@ -604,6 +641,15 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
             }),
             ""
         );
+    }
+
+    /**
+     * @dev Snapshots the just-in-time position's tick bounds into transient storage, so the same bounds are used
+     * to add, read, and remove the position across a swap.  Called at the start of `beforeSwap`
+     */
+    function _snapshotActiveTicks() private {
+        REHYPOTHECATION_HOOK_SLOT.offset(TICK_LOWER_OFFSET).asInt256().tstore(getTickLower());
+        REHYPOTHECATION_HOOK_SLOT.offset(TICK_UPPER_OFFSET).asInt256().tstore(getTickUpper());
     }
 
     /// @dev The lower tick of the just-in-time position snapshotted for the current swap.
