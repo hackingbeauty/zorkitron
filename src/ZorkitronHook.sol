@@ -58,12 +58,14 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      */
     bytes32 private constant REHYPOTHECATION_HOOK_SLOT = 0x23f8264cc98f1c05acfa1795f9fb9efa795bb6c05987a0477bcc1622ab5aca00;
 
-
     /// @dev The offset of the just-in-time position lower tick within {REHYPOTHECATION_HOOK_SLOT}
     uint256 private constant TICK_LOWER_OFFSET = 0;
 
     /// @dev The offset of the just-in-time position upper tick within {REHYPOTHECATION_HOOK_SLOT}
     uint256 private constant TICK_UPPER_OFFSET = 1;
+
+    /// @dev The offset of the JIT lock flags within {REHYPOTHECATION_HOOK_SLOT}
+    uint256 private constant JIT_LOCK_OFFSET = 2;
 
     /// @dev Errow thrown when trying to initialize a pool that has already been initialized.
     error PoolAlreadyInitialized();
@@ -88,12 +90,16 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
 
     /// @dev Error thrown when attempting to add or remove liquidity with zero shares.
     error ZeroShares();
+    
+    /// @dev Error thrown when a seed would mint fewer than the minimum safe initial `shares`, given `minShares`.
+    error InsufficientSeed(uint256 shares, uint256 minShares);
 
     /// @dev Error thrown when the amounts of an addition or removal exceed the caller's bounds.
     error TooMuchSlippage();
 
-    /// @dev Error thrown when a seed would mint fewer than the minimum safe initial `shares`, given `minShares`.
-    error InsufficientSeed(uint256 shares, uint256 minShares);
+    /// @dev Error thrown when a liquidity operation and the just-in-time settlement would overlap,
+    /// to prevent reentrancy across the JIT lock.
+    error JITLocked();
 
     /// @dev Errow thrown when a swap is attempted while the just-in-time position would size to zero,
     /// so the hook cannot back the swap.
@@ -281,8 +287,8 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     {
         // Take the JIT lock: block liquidity operations from reentering mid-settlement, and block a swap
         // from running inside a liquidity operation or another swap.  Released at the end of `_afterSwap`.
-        // if (_reentrancyGuardEntered() || _isJITLocked()) revert JITLocked();
-        // _setJITLocked(true);
+        if (_reentrancyGuardEntered() || _isJITLocked()) revert JITLocked();
+        _setJITLocked(true);
 
         // Snapshot the positions tick bounds so `afterSwap` removes exactly what is added here.
         _snapshotActiveTicks();
@@ -571,24 +577,6 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     }
 
     /**
-     * @dev Retrieves the current `liquidity` of the hook owned liquidity position in the `_poolKey` pool.
-     * 
-     * NOTE: Given that just-in-time liquidity provisioning is performed, this function will only return
-     * non-zero values while the liquidity is briefly inside the pool, which is exclusively between `beforeSwap`
-     * and `afterSwap`.  It will return zero in any other point in the hook lifecycle.  For determining the hook
-     * balances at any other point, use {_getAmountInYieldSource}.
-     */
-    function _getHookPositionLiquidity() internal view returns (uint128 liquidity) {
-        // Position.calculatePositionKey is a library function used to derive the unique 32-byte storage key
-        // for a liquidity position inside a pool
-        bytes32 positionKey = Position.calculatePositionKey(address(this), _activeTickLower(), _activeTickUpper(), bytes32(0));
-        
-        // getPositionLiquidity (or reading position liquidity), read the current liquidiyt units assigned to
-        // a specific liquidity position  
-        return poolManager.getPositionLiquidity(_poolKey.toId(), positionKey);
-    }
-
-    /**
      * @dev Takes or settles any pending `currencyDelta` delta with the poolManager by transferring from the 
      * yield sources/vaults to the poolManager and vice versa, effectively neutralizing the Flash Accounting
      * deltas before being ablet to lock the poolManager again. 
@@ -660,6 +648,34 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
     /// @dev The upper tick of the just-in-time position shapshotted for the current swap.
     function _activeTickUpper() private view returns (int24) {
         // To Do
+    }
+
+    /// @dev Sets whether the JIT lock (`beforeSwap` through `afterSwap`) is held.
+    function _setJITLocked(bool active) private {
+        REHYPOTHECATION_HOOK_SLOT.offset(JIT_LOCK_OFFSET).asBoolean().tstore(active);
+    }
+
+    /// @dev Whether the JIT lock is currently held
+    function _isJITLocked() private view returns (bool) {
+        return REHYPOTHECATION_HOOK_SLOT.offset(JIT_LOCK_OFFSET).asBoolean().tload();
+    }
+
+     /**
+     * @dev Retrieves the current `liquidity` of the hook owned liquidity position in the `_poolKey` pool.
+     * 
+     * NOTE: Given that just-in-time liquidity provisioning is performed, this function will only return
+     * non-zero values while the liquidity is briefly inside the pool, which is exclusively between `beforeSwap`
+     * and `afterSwap`.  It will return zero in any other point in the hook lifecycle.  For determining the hook
+     * balances at any other point, use {_getAmountInYieldSource}.
+     */
+    function _getHookPositionLiquidity() internal view returns (uint128 liquidity) {
+        // Position.calculatePositionKey is a library function used to derive the unique 32-byte storage key
+        // for a liquidity position inside a pool
+        bytes32 positionKey = Position.calculatePositionKey(address(this), _activeTickLower(), _activeTickUpper(), bytes32(0));
+        
+        // getPositionLiquidity (or reading position liquidity), read the current liquidiyt units assigned to
+        // a specific liquidity position  
+        return poolManager.getPositionLiquidity(_poolKey.toId(), positionKey);
     }
 
     /**
