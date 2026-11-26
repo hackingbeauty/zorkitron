@@ -171,7 +171,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      * can reedem it.  Consider overring this function to restrict the caller.
      * 
      * NOTE: The amounts should be provided close to the pool's current price, otherwise part of the seeded
-     * liquidity may sit idel until swaps rebalance it.  See {_getLiquidityToUse}.
+     * liquidity may sit idle until swaps rebalance it.  See {_getLiquidityToUse}.
      * 
      * WARNING: A third party can front-run the seed with a skewed ratio that leaves the hook with negligible
      * usable liquidity.  Consider seeding atomically with pool initialization, or overriding this function
@@ -225,7 +225,6 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
      *  - Sender must have approved the hook to spend the required tokens
      *  - Ammounts required must not exceed `amount0Max` of `currency0` and `amount1Max` of `currency1`
      */
-
     function addRehypothecatedLiquidity(uint256 shares, uint256 amount0Max, uint256 amount1Max)
         payable
         external 
@@ -251,6 +250,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
 
         emit ReHypothecatedLiquidityAdded(msg.sender, _poolKey, shares, amount0, amount1);
     }
+
 
     // -----------------------------------------------
     // NOTE: see IHooks.sol for function documentation
@@ -334,7 +334,7 @@ contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
         }
 
         // Release the JIT lock once settlement (and its external yield source/vault calls) is complete.
-        // _setJITLocked(false);
+        _setJITLocked(false);
 
         return (this.afterSwap.selector, 0);
     }
