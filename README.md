@@ -1,6 +1,23 @@
 # Zorkitron - Uniswap v4 Rehypothecation Hook
 
-Allow Liquidity Providers to deposit out-of-range liquidity into lending protocols like AAVE.
+Zorkitron is a Uniswap v4 hook contract that enables Liquidity Providers to deposit assets into external ERC-4626 yield vaults when not being used while also providing Just-In-Time (JIT) liquidity to pools during swaps.
+
+This mechanism enables idle assets to generate yield while also providing liquidity for trading but only when needed for a swap.  Liquidity is removed from a pool right after a swap and is then actively invested in novel new yield generating vaults.
+
+Key features include:
+
+* __Yield Generation and JIT Liquidity__: The contract deposits assets into yield-generating vaults, then uses those same assets to provide either full-range or custom-range JIT liquidity during the `beforeSwap` lifecyle hook, and then removes the assets from the pool in the `afterSwap` lifecyle hook. 
+
+* __Slippage Protection__: Configures slippage bounds for liquidity operations in order to prevent sandwich attacks.  The functions {addRehypothecatedLiquidity} and {removeRehypothecatedLiquidity} now require `amount0Max/amount1Max` and `amount0Min/amount1Min` parameters, reverting with `TooMuchSlippage` if bounds are exceeded.
+
+* __Security Hardening__: The contract addresses critical vulnerabilities such as **swaps with no usable JIT liquidity** (reverting if the contract cannot back a swap) and **liquidity overflow** (capping JIT liquidity size at at the per-tick limit to prevent `TickLiquidityOverflow` errors);
+
+* __Atomic Withdrawals__: Prevents reentrancy or accounting issues when the pool state changes before all assets are transferred.The contract withdraws both currencies from yield sources before paying out withdrawals.
+
+* __Fee-Free Yield Sources__: The contract assumes yield sources (i.e. vaults) are fee-free; deposit or withdrawal fees in yield sources can skew share-to-amount conversions harming other Liquidity Providers.
+
+The contract relies on Uniswap v4's core hook functions using `beforeInitialize`, `beforeSwap`, and `afterSwap` callbacks to manage the lifecycle of rehypothecated positions.
+
 _
 ### Get Started
 _
