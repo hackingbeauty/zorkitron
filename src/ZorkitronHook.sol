@@ -30,7 +30,6 @@ import {CurrencySettler} from "./utils/CurrencySettler.sol";
 import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
 import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
-import {IZorkitronRouter} from "./interfaces/IZorkitronRouter.sol";
 import "forge-std/console.sol";
 
 contract ZorkitronHook is BaseHook, ERC20, ReentrancyGuardTransient {
